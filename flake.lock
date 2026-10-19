@@ -1,0 +1,23 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1792383273,
+        "narHash": "sha256-PCvB4uqEEtfOgcs8nVpLePwEV+VxtkOzvNxmxu/CMSw=",
+        "path": "/home/lumiere/workspace/nixpkgs",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/lumiere/workspace/nixpkgs",
+        "type": "path"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

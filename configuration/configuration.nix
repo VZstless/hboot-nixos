@@ -59,10 +59,10 @@
 
   # --- Misc ------------------------------------------------------------------
   # Journald to RAM only -- the eMMC is soldered, be gentle.
-  services.journald.extraConfig = ''
-    Storage=volatile
-    RuntimeMaxUse=64M
-  '';
+  services.journald.settings.Journal = {
+    Storage = "volatile"; # journald to RAM only: the eMMC is soldered, be gentle
+    RuntimeMaxUse = "64M";
+  };
 
   nix.settings.trusted-users = [ "root" ];
   nix.extraOptions = ''

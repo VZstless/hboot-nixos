@@ -923,6 +923,7 @@
 	status = "okay";
 	bus-width = <8>;
 	mmc-hs200-1_8v;
+	nvidia,only-1-8v;
 	non-removable;
 	vqmmc-supply = <&vdd_1v8>;
 };

@@ -8,7 +8,7 @@
 #     the kernel, so stage-1's only real job is: mount UDA, switch_root.
 #   * A rescue shell on ttyS0 is priceless during bring-up.
 #
-# The resulting cpio.gz is ~3 MiB.
+# The resulting cpio.gz is ~1.7 MiB.
 
 {
   lib,
@@ -29,17 +29,20 @@ runCommand "flounder-initramfs.cpio.gz"
       cpio
       gzip
     ];
-    # The busybox closure is needed inside the sandbox to copy it over.
     buildInputs = [ busybox ];
   }
   ''
-    (
-      mkdir -p root/bin root/dev root/proc root/sys root/mnt
-      cp -a ${busybox}/bin/busybox root/bin/
-      ln -s /bin/busybox root/bin/sh
-      install -m 0755 ${init} root/init
+    mkdir -p root/bin root/sbin root/dev root/proc root/sys root/mnt
 
-      # deterministic archive
-    )
+    # Copy the whole applet tree (busybox itself plus the relative
+    # applet symlinks created by `make install`), not just the binary:
+    # /init needs mount, sleep, switch_root, setsid, ...
+    cp -a ${busybox}/bin/. root/bin/
+    if [ -d ${busybox}/sbin ]; then
+      cp -a ${busybox}/sbin/. root/sbin/
+    fi
+
+    install -m 0755 ${init} root/init
+
     (cd root && find . -print0 | cpio -0 -o -H newc --owner +0:+0) | gzip -9n > $out
   ''

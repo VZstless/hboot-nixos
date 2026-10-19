@@ -31,15 +31,70 @@ in
   # download/build (nixpkgs force-enables RUST on aarch64 >= 6.12).
   RUST = force no;
 
+  # --- Boot image format ---------------------------------------------------
+  # nixpkgs enables CONFIG_EFI_ZBOOT for aarch64 (common-config.nix).  That
+  # turns arch/arm64/boot/Image into a self-decompressing PE/EFI zboot
+  # image, whose entry point is an EFI stub -- hboot is *not* EFI and
+  # simply jumps to the start of the decompressed Image, so it ends up
+  # executing the wrong code (verified: `fastboot boot` returns to
+  # fastboot, while the old pmOS Image boots).  Disable the whole EFI
+  # path; with CONFIG_EFI=n the image starts with a plain NOP + branch,
+  # exactly like the downstream/pmOS Image.
+  EFI = force no;
+  EFI_STUB = force no;
+  EFI_ZBOOT = force no;
+
+  # --- Trim subsystems that cannot work on this tablet ---------------------
+  # This is not required for correctness, but the default nixpkgs config
+  # builds every DRM/WiFi/audio/media driver as a module, which makes a
+  # full kernel build take ~1 hour.  None of these can be used on
+  # flounder yet (no panel driver, no BCM4354 firmware, no audio, no
+  # cameras), and disabling them also keeps the kernel image small.
+  DRM_TEGRA = force no;      # would fight simpledrm for the display
+  DRM_AMDGPU = force no;
+  DRM_RADEON = force no;
+  DRM_NOUVEAU = force no;
+  DRM_XE = force no;
+  DRM_MSM = force no;
+  DRM_VIRTIO_GPU = force no;
+  DRM_BOCHS = force no;
+  DRM_QXL = force no;
+  DRM_VMWGFX = force no;
+  DRM_CIRRUS_QEMU = force no;
+  DRM_VKMS = force no;
+  SND = force no;
+  SOUND = force no;
+  MEDIA_SUPPORT = force no;
+  WLAN = force no;
+  BT = force no;
+  INFINIBAND = force no;
+  ISDN = force no;
+  HAMRADIO = force no;
+  STAGING = force no;
+  IIO = force no;
+
   # --- Boot path: serial console, eMMC, ext4 (all built-in) ---------------
   SERIAL_8250 = force yes;
   SERIAL_8250_TEGRA = force yes; # deprecated alias, harmless
   SERIAL_TEGRA = force yes;
   MMC = force yes;
+  # mmcblk0p31 (UDA) must exist in the initramfs, before any module
+  # can be loaded -> MMC_BLOCK has to be built in (default is =m).
+  # MMC_BLOCK depends on (RPMB || !RPMB); with RPMB=m Kconfig caps
+  # MMC_BLOCK at m, so RPMB has to be built in as well.
+  RPMB = force yes;
+  MMC_BLOCK = force yes;
+  # The GPT has 33 partitions; the default of 32 minors makes the
+  # last ones unreachable.  p31 is our root, so be generous.
+  MMC_BLOCK_MINORS = force (freeform "64");
   MMC_SDHCI = force yes;
   MMC_SDHCI_TEGRA = force yes;
   EXT4_FS = force yes;
   EXT4_FS_POSIX_ACL = force yes;
+  # ext4 metadata checksums need crc32c at *mount* time.  In this
+  # initrdless setup there is no module loader before switch_root, so
+  # it has to be built in (the nixpkgs default is =m).
+  CRYPTO_CRC32C = force yes;
   DEVTMPFS = force yes;
   DEVTMPFS_MOUNT = force yes;
 
@@ -79,6 +134,15 @@ in
   INPUT_GPIO_VIBRA = force module; # renamed from INPUT_GPIO_VIBRATOR
   RMI4_CORE = force module;
   RMI4_SPI = force module;
+
+  # USB keyboard/storage: useful even without loadable drivers in the
+  # initramfs (modules are loaded by udevd from the rootfs).
+  USB_HID = force yes;
+  HID_GENERIC = force yes;
+  USB_STORAGE = force yes;
+  VFAT_FS = force yes;
+  NLS_CODEPAGE_437 = force yes;
+  NLS_ISO8859_1 = force yes;
 
   # Watchdog: the tegra watchdog is not enabled in the device tree on
   # purpose -- hboot enables it with a 120s heartbeat and nothing

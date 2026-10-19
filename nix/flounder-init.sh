@@ -5,7 +5,7 @@
 # and switch_roots into the system closure. Falls back to a rescue
 # shell on the serial console (ttyS0) if anything goes wrong.
 
-export PATH=/bin
+export PATH=/bin:/sbin
 
 rescue() {
     echo ""

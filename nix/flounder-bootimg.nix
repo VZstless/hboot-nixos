@@ -22,6 +22,13 @@
   dtb ? "${kernel}/dtbs/nvidia/tegra132-flounder.dtb",
   initramfs,
   cmdline ? "",
+  # The 7.2 Image is ~69 MiB once decompressed; hboot's default
+  # ramdisk address (0x11000000) would be overwritten by the kernel.
+  # Put the initramfs well above the kernel instead.  hboot reads these
+  # addresses from the Android boot image header.
+  ramdiskOffset ? "0x05000000",
+  kernelOffset ? "0x00008000",
+  tagsOffset ? "0x00000100",
 }:
 
 runCommand "flounder-boot.img"
@@ -42,12 +49,12 @@ runCommand "flounder-boot.img"
       --kernel kernel-dtb \
       --ramdisk ${initramfs} \
       --base 0x10000000 \
-      --kernel_offset 0x00008000 \
-      --ramdisk_offset 0x01000000 \
-      --tags_offset 0x00000100 \
+      --kernel_offset ${kernelOffset} \
+      --ramdisk_offset ${ramdiskOffset} \
+      --tags_offset ${tagsOffset} \
       --pagesize 2048 \
       --header_version 0 \
-      --cmdline "${lib.escapeShellArg cmdline}" \
+      --cmdline ${lib.escapeShellArg cmdline} \
       -o $out
 
     # The LNX partition is 32 MiB; fail loudly if we outgrow it.

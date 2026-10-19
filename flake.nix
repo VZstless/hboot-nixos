@@ -31,6 +31,7 @@
         {
           bootimg = cfg.system.build.bootimg;
           bootimg-rescue = cfg.system.build.bootimg-rescue;
+          bootimg-highmem = cfg.system.build.bootimg-highmem;
           rootfs-image = cfg.system.build.rootfs-image;
           kernel = cfg.boot.kernelPackages.kernel;
           kernel-config = cfg.boot.kernelPackages.kernel.configfile;

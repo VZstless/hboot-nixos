@@ -6,17 +6,10 @@ Subject: [PATCH] arm64: dts: nvidia: Add support for the HTC Nexus 9 (flounder)
 Add a device tree for the HTC Nexus 9 (Google, NVIDIA Tegra132,
 aka "flounder"), based on the downstream HTC 3.10 device tree.
 
-Currently supported: debug UART (ttyS0), eMMC (SDMMC4), USB xHCI
-host, I2C devices (TPS65913/Palmas PMIC, BQ24192 charger,
-MAX17050 fuel gauge), SPI RMI4 touch, gpio-keys, vibrator,
-extcon-USB, and a simple-framebuffer console handed over by
-hboot.
-
-Signed-off-by: NixOS flounder port <flounder@localhost>
 ---
 diff -uN -r a/arch/arm64/boot/dts/nvidia/Makefile b/arch/arm64/boot/dts/nvidia/Makefile
---- a/arch/arm64/boot/dts/nvidia/Makefile	2026-10-19 12:22:40.252068213 +0800
-+++ b/arch/arm64/boot/dts/nvidia/Makefile	2026-10-19 12:22:57.153620200 +0800
+--- a/arch/arm64/boot/dts/nvidia/Makefile	2026-10-19 16:41:05.178993513 +0800
++++ b/arch/arm64/boot/dts/nvidia/Makefile	2026-10-19 16:41:06.046923460 +0800
 @@ -17,6 +17,7 @@
  DTC_FLAGS_tegra264-p4071-0000+p3834-0008 := -@
  
@@ -27,8 +20,8 @@ diff -uN -r a/arch/arm64/boot/dts/nvidia/Makefile b/arch/arm64/boot/dts/nvidia/M
  dtb-$(CONFIG_ARCH_TEGRA_210_SOC) += tegra210-p2571.dtb
 diff -uN -r a/arch/arm64/boot/dts/nvidia/tegra132-flounder.dts b/arch/arm64/boot/dts/nvidia/tegra132-flounder.dts
 --- a/arch/arm64/boot/dts/nvidia/tegra132-flounder.dts	1970-01-01 08:00:00.000000000 +0800
-+++ b/arch/arm64/boot/dts/nvidia/tegra132-flounder.dts	2026-10-19 12:22:40.939864688 +0800
-@@ -0,0 +1,986 @@
++++ b/arch/arm64/boot/dts/nvidia/tegra132-flounder.dts	2026-10-19 16:41:06.048012956 +0800
+@@ -0,0 +1,987 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Device tree for the HTC Nexus 9 "flounder" (Google, NVIDIA Tegra132).
@@ -954,6 +947,7 @@ diff -uN -r a/arch/arm64/boot/dts/nvidia/tegra132-flounder.dts b/arch/arm64/boot
 +	status = "okay";
 +	bus-width = <8>;
 +	mmc-hs200-1_8v;
++	nvidia,only-1-8v;
 +	non-removable;
 +	vqmmc-supply = <&vdd_1v8>;
 +};

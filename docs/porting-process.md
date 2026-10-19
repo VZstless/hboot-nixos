@@ -199,7 +199,22 @@ rootfs 镜像和少量本地包。
    override 保留默认参数；但**重复**添加 bridge_stp_helper 会把补丁
    打两遍而失败）—— 见 flounder-hardware.nix 里的注释。
 6. **两个 nix build 共用一个日志文件 + 误杀进程** —— 教训：每次
-   构建用独立日志。
+   构建用独立日志；被杀构建留下的 stale 锁要清理。
+7. **Linux 7.2 的内核选项改名**（导致 `unused option` 致命错误）：
+   - `SERIAL_8250_EARLYCON` → 没了，`SERIAL_EARLYCON` 由 SERIAL_8250
+     自动 select；
+   - `INPUT_GPIO_VIBRATOR` → `INPUT_GPIO_VIBRA`；
+   - `FB_SIMPLE` 现在 `depends on !DRM_SIMPLEDRM`，而 nixpkgs
+     common-config 默认 `DRM_SIMPLEDRM=y`——simplefb 改由 simpledrm
+     接管（绑同一个 `simple-framebuffer` DT 节点，控制台经
+     DRM_FBDEV_EMULATION + FRAMEBUFFER_CONSOLE），**不要**再设 FB_SIMPLE；
+   - `DRM_NOVA`/`NOVA_CORE` 依赖 RUST，关掉 RUST 后这些提示消失。
+8. **nixpkgs 对 aarch64 ≥ 6.12 无条件强开 CONFIG_RUST**
+   （common-config.nix 里自己的 withRust 判断不看 structuredExtraConfig），
+   要下载 ~700 MiB rust 工具链。解法：`RUST = mkForce no` +
+   `ignoreConfigErrors = true`（RUST/NOVA 等选项会变成无害的
+   "unused" 告警）。代价是真配置错误也会静默，需人为核对
+   kernel-config.nix 里的每个选项在内核里真实存在。
 
 ## 8. 尚未完成 / 已知风险（TODO 清单）
 
@@ -269,3 +284,64 @@ boot 分区永远砖不了 bootloader，`fastboot boot twrp-flounder.img`
 | `nix/*.nix` | initramfs / bootimg / rootfs 构建逻辑 |
 | `configuration/*.nix` | NixOS 配置与硬件模块 |
 | `scripts/*.sh` | 构建 + 刷机流程 |
+
+---
+
+## 11. 第二轮：构建收尾与实机引导排查（2026-10-19 晚）
+
+第一轮结束时只有设计文档和部分配置，`out/` 为空。第二轮把工程真正
+构建出来并在已连接的 flounder（hboot 3.43.0.0114）上做了引导验证。
+**详细记录见 [build-and-verification.md](build-and-verification.md)**，
+这里只列结论和与第一轮设计不同之处。
+
+### 11.1 已修复的构建/启动问题
+
+1. `flounder-bootimg.nix` 的 cmdline 被多包了一层单引号（实际写进
+   boot header 的是 `'console=...'`），已修复并通过 header 解析验证。
+2. initramfs 只复制了 busybox 二进制，没有 applet 符号链接；
+   现在复制整个 `bin/`/`sbin/`，`PATH=/bin:/sbin`。
+3. `CONFIG_MMC_BLOCK=m` + `CONFIG_RPMB=m`：Kconfig 的
+   `depends on RPMB || !RPMB` 会把 `MMC_BLOCK` 压到 `m`；initrdless
+   启动必须 `RPMB=y`、`MMC_BLOCK=y`、`CRYPTO_CRC32C=y`（ext4 挂载）。
+4. rootfs 用 `fakeroot mkfs.ext4 -d` 保证镜像内 `root:root`；加入
+   `/nix-path-registration` + `register-nix-paths.service` 首次启动
+   加载 Nix database。
+5. **`CONFIG_EFI_ZBOOT=y`（实机确认）**：nixpkgs 对 aarch64 默认打开
+   EFI zboot，`Image` 变成 EFI 自解压 PE 镜像，hboot 不是 EFI，无法
+   引导。现在 `EFI=n`、`EFI_STUB=n`、`EFI_ZBOOT=n`，Image 开头恢复
+   为 NOP+branch（与 pmOS 一致）。
+
+### 11.2 仍未解决：hboot 实际引导失败
+
+修复 EFI_ZBOOT 后，`fastboot boot` / `fastboot flash boot` 仍然没有
+进入内核。根据 `runtime-info.txt` 的 `/proc/iomem`，hboot 对 Tegra
+DRAM 使用 `+0x70000000` 偏移：
+
+```
+boot header kernel 0x10008000 -> 实际 0x80008000
+boot header ramdisk 0x11000000 -> 实际 0x81000000
+```
+
+而 7.2 Image 解压后 69 MB，从 0x80008000 延伸到 0x84600000，覆盖了
+0x81000000 的 ramdisk。已准备实验镜像 `out/boot-highmem.img`，把
+`kernel_addr` 改到 0x20008000（实际 0x90008000），ramdisk 保持
+0x11000000，使二者不再重叠。下一次设备恢复后优先验证它；若仍失败，
+则按 build-and-verification.md 第 4 节的假设 B/C/D 继续（TWRP 地址
+对照、瘦身内核、内置 initramfs）。
+
+### 11.3 rootfs 产物
+
+rootfs 已成功生成：4 GiB ext4，label `nixos-flounder`，实用约 1.4 GiB，
+48 498 个文件；`e2fsck -fn` 干净，`/nix-path-registration` 和
+`/nix/var/nix/profiles/system` 都在。第一次构建时 nixpkgs 的本地
+checkout 被 `nix.registry` 拉进闭包（4.5 GiB），已用
+`nix.registry = lib.mkForce { }` 去掉。
+
+### 11.4 当前注意事项
+
+- 最后一次测试把 `out/boot.img` 刷进了 LNX，且设备在 USB 复位后离线。
+  恢复后先执行 `scripts/restore-boot.sh` 还原 `hboot-analysis/LNX.img`。
+- 构建日志在 `out/logs/`；`scripts/build-all.sh` 现在会把 store 符号
+  链接复制成真实文件，避免 GC 后产物消失。
+- `documentation.enable = false`、去掉 iwd/iw，是为了缩短交叉编译
+  closure；WiFi 反正还缺固件/NVRAM。

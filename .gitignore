@@ -1,5 +1,6 @@
 .src-cache/
 result
 result-*
-out/
+out/*
+!out/SHA256SUMS.txt
 *.qcow2

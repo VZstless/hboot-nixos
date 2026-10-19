@@ -11,6 +11,20 @@ arm64）适配 **NixOS 26.11-unstable**（nixpkgs master，2026-10）的完整�
               └─ rootfs: UDA 分区 (/dev/mmcblk0p31, ext4, systemd-growfs 自动扩容)
 ```
 
+## 当前状态（2026-10-19 晚）
+
+- ✅ 内核、DTS、initramfs、boot.img、rootfs 的构建流程已经跑通，
+  产物在 `out/`（`boot.img` 22.7 MB、`rootfs.img` 4 GiB/1.4 GiB used、
+  `SHA256SUMS.txt`；见 [docs/build-and-verification.md](docs/build-and-verification.md)）。
+- ✅ 修掉了 cmdline 引号、initramfs applet、MMC_BLOCK/CRC32C 模块化、
+  rootfs 属主/Nix 数据库等构建期问题。
+- ❌ **hboot 实机引导尚未成功**：7.2 内核解压后约 69 MB，会覆盖
+  hboot 固定在 0x11000000 的 ramdisk；EFI_ZBOOT 已经排除。
+  当前 `out/boot.img` 已改为把内核加载到 0x20008000（实际
+  0x90008000）、ramdisk 留在 0x11000000，等待设备复位后验证。
+- ⚠️ 最后一次测试后设备需要人工断电复位，恢复原始 boot 分区用
+  `scripts/restore-boot.sh`。
+
 ## 目录结构
 
 | 路径 | 内容 |
@@ -24,11 +38,12 @@ arm64）适配 **NixOS 26.11-unstable**（nixpkgs master，2026-10）的完整�
 | `nix/flounder-initramfs.nix` + `nix/flounder-init.sh` | 微型 busybox initramfs |
 | `nix/flounder-bootimg.nix` | Android boot image 组装（mkbootimg 参数见注释） |
 | `nix/flounder-rootfs.nix` | ext4 rootfs 镜像（mkfs.ext4 -d + closureInfo） |
-| `scripts/` | 构建与刷机脚本 |
+| `scripts/` | 构建、刷机、恢复与 boot.img 分析脚本 |
 | `docs/flounder-hboot-analysis.md` | 设备/hboot 引导器逆向分析（移植前置资料） |
 | `docs/porting-process.md` | **本次移植的完整过程与决策记录** |
+| `docs/build-and-verification.md` | **第二轮：构建、产物自检、实机验证与当前引导问题** |
 | `hboot-analysis/` | 设备 dump 原始产物（分区表、设备树、boot 分区备份等） |
-| `out/` | 构建产物（boot.img / rootfs.img） |
+| `out/` | 构建产物（boot.img / boot-highmem.img / rootfs.img / SHA256SUMS.txt / logs） |
 
 ## 快速开始
 
@@ -39,24 +54,28 @@ arm64）适配 **NixOS 26.11-unstable**（nixpkgs master，2026-10）的完整�
 cache.nixos.org，内核源码来自 cdn.kernel.org。
 
 ```bash
-# 1. 构建（交叉编译，无需 qemu）
-scripts/build-all.sh
-#    → out/boot.img       内核+DTB+initramfs (Android boot image v0)
-#    → out/rootfs.img     NixOS rootfs (ext4)
+# 1. 构建（交叉编译，无需 qemu；第一次会交叉编译 aarch64 userland）
+NIX_MAX_JOBS=4 NIX_CORES=2 scripts/build-all.sh
+#    → out/boot.img       内核 @0x20008000 + ramdisk @0x11000000
+#    → out/boot-highmem.img 与默认相同的布局（兼容旧名字）
+#    → out/rootfs.img     NixOS rootfs (ext4，首启自动扩容)
 #    → out/bootimg-rescue 救援镜像（直接进 initramfs shell）
 
-# 2. 临时引导验证（不写入任何分区，随时可试）
-scripts/flash-test-boot.sh           # = fastboot boot out/boot.img
-# 串口上应能看到内核日志 + NixOS 启动；rootfs 还没刷时会在
-# "mount /dev/mmcblk0p31 failed" 处落入 rescue shell —— 这是预期行为。
+# 2. 结构自检（不依赖设备）
+scripts/analyze-bootimg.py out/boot.img
 
-# 3. 刷入 rootfs 到 UDA（userdata）分区 —— 注意：会清空 userdata
+# 3. 临时引导验证（不写入任何分区，随时可试）
+scripts/flash-test-boot.sh           # = fastboot boot out/boot.img
+# 当前引导仍有问题，见 docs/build-and-verification.md 第 4 节。
+# rootfs 没刷时会在 "mount /dev/mmcblk0p31 failed" 处落入 rescue shell。
+
+# 4. 如果测试镜像把 LNX 写坏/设备不响应，恢复原始 boot 分区：
+scripts/restore-boot.sh
+
+# 5. 刷入 rootfs 到 UDA（userdata）分区 —— 注意：会清空 userdata
 scripts/flash-rootfs.sh              # 或: scripts/flash-rootfs.sh out/rootfs.img twrp
 
-# 4. 临时引导完整验证一次，确认能进 NixOS
-scripts/flash-test-boot.sh
-
-# 5. 确认无误后刷入 boot 分区（LNX）
+# 6. 确认无误后刷入 boot 分区（LNX）
 scripts/flash-boot.sh
 ```
 
@@ -64,6 +83,9 @@ scripts/flash-boot.sh
 内核更新无需电脑：在设备上 `nixos-rebuild build && flounder-flash-boot`。
 
 ## 当前硬件支持状态
+
+> 下表的 ✅/🟡 表示 **驱动/DTS 已写好**，不代表已经在本机验证过；
+> 目前 hboot 还没成功引导 7.2 内核（见上）。
 
 | 部件 | 状态 | 说明 |
 |---|---|---|
@@ -83,7 +105,8 @@ scripts/flash-boot.sh
 | CPU 调频 (DFLL) | ❌ TODO | 主线 tegra132 无 dfll 节点，当前定频运行 |
 | 深度睡眠 (lp0) | ❌ | 建议 `no_console_suspend` 常开 |
 
-详细原因与后续计划见 `docs/porting-process.md`。
+详细原因与后续计划见 `docs/porting-process.md` 和
+`docs/build-and-verification.md`。
 
 ## 常用操作
 
@@ -92,7 +115,13 @@ scripts/flash-boot.sh
 nix --extra-experimental-features 'nix-command flakes' build .#bootimg -o out/boot.img
 
 # 查看最终内核 .config
-nix build .#kernel.configfile -o kernel-config
+nix build .#kernel-config -o kernel-config
+
+# 结构检查 boot.img（cmdline/Image/DTB/ramdisk 布局）
+scripts/analyze-bootimg.py out/boot.img
+
+# 测试“内核加载到高地址”的实验镜像
+scripts/test-boot-highmem.sh
 
 # 进 flake dev shell（有 dtc / mkbootimg 可手工实验）
 nix develop

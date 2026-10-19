@@ -3,7 +3,7 @@
 # Minimal but usable: serial console, USB (host), sshd once networking
 # exists. Everything device-specific lives in flounder-hardware.nix.
 
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 {
   imports = [
@@ -11,6 +11,12 @@
   ];
 
   system.stateVersion = "26.11";
+
+  # No man pages / HTML manual on an embedded tablet: they pull in
+  # texinfo, man-db, w3m, perl modules, ... and make the cross-built
+  # closure needlessly large.  `nixos-help` is unavailable; the docs
+  # for the port live in this repository.
+  documentation.enable = false;
 
   # --- Users ---------------------------------------------------------------
   users.users.root = {
@@ -49,8 +55,8 @@
     usbutils
     pciutils
     ethtool
-    iwd
-    iw
+    # iwd/iw are intentionally absent until the BCM4354 firmware and
+    # NVRAM are available (see docs/porting-process.md, TODO).
   ];
 
   # No desktop on the first iteration. The simple-framebuffer console
@@ -63,6 +69,12 @@
     Storage = "volatile"; # journald to RAM only: the eMMC is soldered, be gentle
     RuntimeMaxUse = "64M";
   };
+
+  # The flake's nixpkgs input is a path to the local checkout; NixOS
+  # would otherwise put the whole ~4.5 GiB nixpkgs tree into
+  # /etc/nix/registry.json and therefore into the rootfs closure.
+  # We do not need an on-device nixpkgs registry for this port.
+  nix.registry = lib.mkForce { };
 
   nix.settings.trusted-users = [ "root" ];
   nix.extraOptions = ''

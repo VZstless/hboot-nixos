@@ -72,34 +72,35 @@ cache.nixos.org，内核源码来自 cdn.kernel.org。
 # 1. 构建（交叉编译，无需 qemu；第一次会交叉编译 aarch64 userland）
 NIX_MAX_JOBS=4 NIX_CORES=2 scripts/build-all.sh
 #    → out/boot.img       15.2 MB 极小内核 + initramfs（loop 挂载 UDA）
-#    → out/rootfs.img     NixOS rootfs (ext4，首启自动扩容)
+#    → out/rootfs.img     NixOS rootfs (ext4，4 GiB，loop 挂载 UDA)
 #    → out/bootimg-rescue 救援镜像（直接进 initramfs shell）
 
 # 2. 结构自检（不依赖设备）
 scripts/analyze-bootimg.py out/boot.img
 
-# 3. 临时引导验证（不写入任何分区，随时可试）
-scripts/flash-test-boot.sh           # = fastboot boot out/boot.img
-# 当前引导仍有问题，见 docs/build-and-verification.md 第 4 节。
-# rootfs 没刷时会在 "mount /dev/mmcblk0p31 failed" 处落入 rescue shell。
+# 3. 可选：先临时引导验证（不写入分区）
+# scripts/flash-test-boot.sh         # = fastboot boot out/boot.img
 
-# 4. 如果测试镜像把 LNX 写坏/设备不响应，恢复原始 boot 分区：
-scripts/restore-boot.sh
+# 4. 刷入 rootfs 到 UDA（userdata）分区 —— 会清空 userdata
+#    默认走 TWRP + adb push 逐字节写，约 8 分钟；不要用 fastboot sparse。
+scripts/flash-rootfs.sh out/rootfs.img twrp
 
-# 5. 刷入 rootfs 到 UDA（userdata）分区 —— 注意：会清空 userdata
-scripts/flash-rootfs.sh              # 或: scripts/flash-rootfs.sh out/rootfs.img twrp
-
-# 6. 确认无误后刷入 boot 分区（LNX）
+# 5. 刷入 boot 分区（LNX）并重启
 scripts/flash-boot.sh
+
+# 6. 设备启动后接 USB OTG 键盘（tty1 root 自动登录）或 UART 串口
+#    （115200 8N1，root/flounder）输入命令。
 ```
 
 之后在设备上：root / `flounder` 登录（串口或 USB 键盘 + simplefb 控制台）。
-内核更新无需电脑：在设备上 `nixos-rebuild build && flounder-flash-boot`。
+目前 `/` 是 `/dev/loop0`，rootfs 固定 4 GiB（不再 growfs）。
+在设备上更新内核/系统仍需要 nixpkgs 源或网络；本轮主要从主机重刷
+`out/boot.img`。
 
 ## 当前硬件支持状态
 
-> 下表的 ✅/🟡 表示 **驱动/DTS 已写好**，不代表已经在本机验证过；
-> 目前 hboot 还没成功引导 7.2 内核（见上）。
+> 下表的 ✅ 表示驱动/DTS 已写好且系统已能启动；🟡/❌ 表示外设
+> 尚未逐个上机验证。7.2 内核已经能在真机启动（2026-10-19）。
 
 | 部件 | 状态 | 说明 |
 |---|---|---|

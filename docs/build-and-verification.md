@@ -460,7 +460,14 @@ GPT。另外保留了一个 `gpt_sector` 内核补丁
 目标分区里残留的旧数据导致 ext4 空闲块位图校验失败
 （`bg 31: bad block bitmap checksum`），并且部分文件缺失。
 
-最终用 TWRP + adb 逐字节写：
+最终用 TWRP + adb 逐字节写。仓库脚本已经把这条路径设为默认：
+
+```bash
+scripts/flash-rootfs.sh out/rootfs.img twrp   # TWRP + adb push，约 8 分钟
+scripts/flash-boot.sh                          # 刷 out/boot.img 并重启
+```
+
+等价的手工步骤：
 
 ```bash
 fastboot boot hboot-analysis/twrp-flounder.img
@@ -470,6 +477,9 @@ adb reboot bootloader
 fastboot flash boot out/boot.img
 fastboot reboot
 ```
+
+不要用 `fastboot flash userdata`：它的 sparse 转换会跳过零块，实测会
+把 ext4 空闲块位图写坏。
 
 ### 8.5 initramfs 的绝对 symlink 误判
 

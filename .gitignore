@@ -1,0 +1,5 @@
+.src-cache/
+result
+result-*
+out/
+*.qcow2

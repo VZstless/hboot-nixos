@@ -1,0 +1,103 @@
+Processor	: NVIDIA Denver 1.0 rev 0 (aarch64)
+processor	: 0
+processor	: 1
+Features	: fp asimd aes pmull sha1 sha2 crc32 
+CPU implementer	: 0x4e
+CPU architecture: AArch64
+CPU variant	: 0x0
+CPU part	: 0x000
+CPU revision	: 0
+
+Hardware	: Flounder
+Revision	: 0000
+Serial		: 0000000000000000
+MTS version	: 33410787
+===MEM===
+MemTotal:        1880856 kB
+MemFree:         1515372 kB
+Buffers:           35196 kB
+Cached:            76372 kB
+SwapCached:            0 kB
+===IOMEM===
+50000000-50033fff : /host1x
+54080000-540bffff : /host1x/vi
+54200000-5423ffff : regs
+  54200000-5423ffff : tegradc
+54300000-5433ffff : dsi_regs
+  54300000-5433ffff : ganged_dsia_regs
+    54300000-5433ffff : tegradc
+54340000-5437ffff : /host1x/vic
+54400000-5443ffff : ganged_dsib_regs
+  54400000-5443ffff : tegradc
+544c0000-544fffff : /host1x/msenc
+54500000-5453ffff : /host1x/tsec
+54600000-5463ffff : /host1x/isp@54600000
+54680000-546bffff : /host1x/isp@54680000
+57000000-57ffffff : /host1x/gk20a
+58000000-58ffffff : /host1x/gk20a
+60005070-60005077 : 60005100.watchdog
+60005100-6000511f : 60005100.watchdog
+6000c000-6000c2ff : ahbarb
+6000d000-6000dfff : /gpio@6000d000
+60020000-600213ff : /dma@60020000
+70000868-700009cb : tegra124-pinctrl
+  70000868-700009cb : tegra124-pinctrl
+70003000-70003433 : tegra124-pinctrl
+  70003000-70003433 : tegra124-pinctrl
+70006000-7000603f : /serial@70006000
+70006040-7000607f : /serial@70006040
+70006200-7000623f : /serial@70006200
+70006300-7000633f : /serial@70006300
+7000c000-7000c0ff : /i2c@7000c000
+7000c300-7000c3ff : dtv
+7000c400-7000c4ff : /i2c@7000c400
+7000c500-7000c5ff : /i2c@7000c500
+7000c700-7000c7ff : /i2c@7000c700
+7000d000-7000d0ff : /i2c@7000d000
+7000d100-7000d1ff : /i2c@7000d100
+7000d400-7000d5ff : /spi@7000d400
+7000d800-7000d9ff : /spi@7000d800
+7000da00-7000dbff : /spi@7000da00
+7000dc00-7000ddff : /spi@7000dc00
+7000e000-7000e0ff : tegra_rtc
+7000f800-7000fbff : /efuse@7000f800
+70019000-700197ff : mc
+700b0000-700b01ff : sdhci-tegra.0
+  700b0000-700b01ff : mmc1
+700b0600-700b07ff : sdhci-tegra.3
+  700b0600-700b07ff : mmc0
+700e3000-700e30ff : mipi_cal
+  700e3000-700e30ff : tegradc
+70300000-7030007f : tegra30-ahub
+  70300000-7030007f : tegra30-ahub
+70300800-70300fff : tegra30-ahub
+  70300800-70300fff : tegra30-ahub
+70301100-703011ff : tegra30-i2s.1
+  70301100-703011ff : tegra30-i2s
+70301200-703012ff : tegra30-i2s.2
+  70301200-703012ff : tegra30-i2s
+70301300-703013ff : tegra30-i2s.3
+  70301300-703013ff : tegra30-i2s
+70301400-703014ff : tegra30-i2s.4
+  70301400-703014ff : tegra30-i2s
+70302000-703021ff : tegra30-dam.0
+  70302000-703021ff : tegra30-dam
+70302200-703023ff : tegra30-dam.1
+  70302200-703023ff : tegra30-dam
+70302400-703025ff : tegra30-dam.2
+  70302400-703025ff : tegra30-dam
+70306000-703060ff : tegra30-spdif
+  70306000-703060ff : tegra30-spdif
+7d000000-7d003fff : tegra-udc.0
+  7d000000-7d003fff : tegra-otg
+    7d000000-7d003fff : tegra-udc
+7d004000-7d007fff : tegra-ehci.1
+7d008000-7d00bfff : tegra-ehci.2
+80000000-f5bfffff : System RAM
+  80080000-80cd2023 : Kernel code
+  80d46000-8102de1f : Kernel data
+f5c00000-f5cfffff : persistent_ram
+f5d00000-f5d7ffff : persistent_ram
+f5d80000-f5dfffff : persistent_ram
+f5e00000-f75fffff : fbmem
+  f5e00000-f75fffff : System RAM

@@ -1,0 +1,44 @@
+< waiting for any device >
+(bootloader) version: 0.5
+(bootloader) version-bootloader: 3.43.0.0114
+(bootloader) version-baseband: N/A
+(bootloader) version-cpld: None
+(bootloader) version-microp: None
+(bootloader) version-main: 
+(bootloader) version-misc: PVT SHIP
+(bootloader) version-mts: 33410787
+(bootloader) cpu-revision: A03
+(bootloader) serialno: HT4ARJT01614
+(bootloader) cssn: 15fd834024000000740d124700000001
+(bootloader) imei: 355195000000010
+(bootloader) meid: 00000000000000
+(bootloader) product: flounder
+(bootloader) variant: 
+(bootloader) platform: hTCBtegra
+(bootloader) modelid: 0P8210000
+(bootloader) cidnum: 11111111
+(bootloader) battery-status: good
+(bootloader) battery-voltage: 4200mV
+(bootloader) partition-layout: Generic
+(bootloader) unlocked: yes
+(bootloader) build-mode: SHIP
+(bootloader) boot-mode: FASTBOOT
+(bootloader) commitno-bootloader: fa8350e2
+(bootloader) hbootpreupdate: 1
+(bootloader) gencheckpt: 
+(bootloader) partition-size:hboot: 0x600000
+(bootloader) partition-type:hboot: raw
+(bootloader) partition-size:recovery: 0x2000000
+(bootloader) partition-type:recovery: raw
+(bootloader) partition-size:boot: 0x2000000
+(bootloader) partition-type:boot: raw
+(bootloader) partition-size:system: 0xA5E00000
+(bootloader) partition-type:system: ext4
+(bootloader) partition-size:cache: 0x10000000
+(bootloader) partition-type:cache: ext4
+(bootloader) partition-size:userdata: 0x667400000
+(bootloader) partition-type:userdata: f2fs
+(bootloader) partition-size:vendor: 0x10000000
+(bootloader) partition-type:vendor: ext4
+all: Done
+Finished. Total time: 0.142s

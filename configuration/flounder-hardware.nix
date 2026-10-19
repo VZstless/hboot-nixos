@@ -23,7 +23,14 @@ let
       # request_key_helper (see pkgs/top-level/linux-kernels.nix); do
       # not add them again.
     ];
-    structuredExtraConfig = import ../kernel/kernel-config.nix;
+    structuredExtraConfig = (import ../kernel/kernel-config.nix) { inherit lib; };
+
+    # We disable CONFIG_RUST (no Rust drivers on this board, and it saves
+    # a ~700 MiB toolchain download). common-config.nix unconditionally
+    # contributes RUST/DRM_NOVA/NOVA_CORE/DRM_PANIC_SCREEN_QR_CODE settings
+    # whose Kconfig prompts then disappear (they depend on RUST), which
+    # would be fatal "unused option" errors otherwise.
+    ignoreConfigErrors = true;
   };
 
   flounderInitramfs = pkgs.callPackage ../nix/flounder-initramfs.nix { };
@@ -65,6 +72,9 @@ in
 {
   # --- Cross-compile from x86_64 (the host running this flake) ------------
   nixpkgs.hostPlatform = "aarch64-linux";
+  # The machine running this flake is x86_64; build the aarch64 closure
+  # with a cross stdenv instead of emulation.
+  nixpkgs.buildPlatform = "x86_64-linux";
 
   # --- Boot chain ----------------------------------------------------------
   boot.loader.grub.enable = false;

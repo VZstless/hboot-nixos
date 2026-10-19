@@ -29,11 +29,11 @@
           cfg = self.nixosConfigurations.flounder.config;
         in
         {
-          inherit (cfg.system.build)
-            bootimg
-            rootfs-image
-            ;
+          bootimg = cfg.system.build.bootimg;
+          bootimg-rescue = cfg.system.build.bootimg-rescue;
+          rootfs-image = cfg.system.build.rootfs-image;
           kernel = cfg.boot.kernelPackages.kernel;
+          kernel-config = cfg.boot.kernelPackages.kernel.configfile;
           toplevel = cfg.system.build.toplevel;
           default = self.packages.${buildSystem}.bootimg;
         };

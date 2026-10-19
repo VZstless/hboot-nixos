@@ -1,0 +1,102 @@
+# NixOS 26.11-unstable on the HTC Nexus 9 (flounder)
+
+为 HTC Google Nexus 9（代号 **flounder**，NVIDIA Tegra132 / 双核 Denver，
+arm64）适配 **NixOS 26.11-unstable**（nixpkgs master，2026-10）的完整工程。
+
+```
+引导链:  BootROM → xloader → hboot(HTC bootloader) → LNX 分区(Android boot image)
+              └─ 内核: mainline Linux 7.2 (nixpkgs linux_latest, 交叉编译)
+              └─ 设备树: 本仓库新增的 tegra132-flounder.dts (追加在内核镜像尾部)
+              └─ initramfs: 自制 busybox 微型 initramfs (~2 MiB)
+              └─ rootfs: UDA 分区 (/dev/mmcblk0p31, ext4, systemd-growfs 自动扩容)
+```
+
+## 目录结构
+
+| 路径 | 内容 |
+|---|---|
+| `flake.nix` | flake 入口（nixpkgs = 本地 26.11-unstable checkout） |
+| `configuration/configuration.nix` | NixOS 系统配置（用户/服务/软件） |
+| `configuration/flounder-hardware.nix` | 硬件模块：内核、boot 链、rootfs 镜像 |
+| `kernel/dts/tegra132-flounder.dts` | **新写的主线风格设备树**（本移植的核心） |
+| `kernel/0001-arm64-dts-nvidia-Add-support-for-the-HTC-Nexus-9-flounder.patch` | 上述 DTS 的内核补丁 |
+| `kernel/kernel-config.nix` | 内核配置片段（structuredExtraConfig） |
+| `nix/flounder-initramfs.nix` + `nix/flounder-init.sh` | 微型 busybox initramfs |
+| `nix/flounder-bootimg.nix` | Android boot image 组装（mkbootimg 参数见注释） |
+| `nix/flounder-rootfs.nix` | ext4 rootfs 镜像（mkfs.ext4 -d + closureInfo） |
+| `scripts/` | 构建与刷机脚本 |
+| `docs/flounder-hboot-analysis.md` | 设备/hboot 引导器逆向分析（移植前置资料） |
+| `docs/porting-process.md` | **本次移植的完整过程与决策记录** |
+| `hboot-analysis/` | 设备 dump 原始产物（分区表、设备树、boot 分区备份等） |
+| `out/` | 构建产物（boot.img / rootfs.img） |
+
+## 快速开始
+
+前置：x86_64 主机装有 Nix（ flakes 已启用）、`fastboot`（android-tools）、
+串口线（强烈建议，见 `docs/flounder-hboot-analysis.md` 第 8 节）。
+本环境 github.com 不可达，故 flake 直接引用本地 nixpkgs checkout
+（`/home/lumiere/workspace/nixpkgs`，26.11-unstable）；依赖二进制来自
+cache.nixos.org，内核源码来自 cdn.kernel.org。
+
+```bash
+# 1. 构建（交叉编译，无需 qemu）
+scripts/build-all.sh
+#    → out/boot.img       内核+DTB+initramfs (Android boot image v0)
+#    → out/rootfs.img     NixOS rootfs (ext4)
+#    → out/bootimg-rescue 救援镜像（直接进 initramfs shell）
+
+# 2. 临时引导验证（不写入任何分区，随时可试）
+scripts/flash-test-boot.sh           # = fastboot boot out/boot.img
+# 串口上应能看到内核日志 + NixOS 启动；rootfs 还没刷时会在
+# "mount /dev/mmcblk0p31 failed" 处落入 rescue shell —— 这是预期行为。
+
+# 3. 刷入 rootfs 到 UDA（userdata）分区 —— 注意：会清空 userdata
+scripts/flash-rootfs.sh              # 或: scripts/flash-rootfs.sh out/rootfs.img twrp
+
+# 4. 临时引导完整验证一次，确认能进 NixOS
+scripts/flash-test-boot.sh
+
+# 5. 确认无误后刷入 boot 分区（LNX）
+scripts/flash-boot.sh
+```
+
+之后在设备上：root / `flounder` 登录（串口或 USB 键盘 + simplefb 控制台）。
+内核更新无需电脑：在设备上 `nixos-rebuild build && flounder-flash-boot`。
+
+## 当前硬件支持状态
+
+| 部件 | 状态 | 说明 |
+|---|---|---|
+| 串口控制台 (ttyS0) | ✅ | UART0 @70006000，115200 |
+| eMMC (26 GB) | ✅ | SDHCI4，hs200，8-bit；rootfs 所在 |
+| 按键 (电源/音量±) | ✅ | gpio-keys |
+| framebuffer 控制台 | ✅* | hboot 移交的 simplefb（1536×2048），`FRAMEBUFFER_CONSOLE` |
+| USB host (OTG) | ✅ | xhci-tegra，可接键盘/网卡 |
+| 触摸 (Synaptics RMI4, SPI) | 🟡 | DTS 已写、驱动 =m；待上机验证 |
+| 充电/电量 (BQ24192/MAX17050) | 🟡 | DTS 已写、驱动 =y；待上机验证 |
+| PMIC (TPS65913/Palmas) | 🟡 | 各路稳压器按下游 DT 1:1 移植；待上机验证 |
+| 震动马达 | 🟡 | gpio-vibrator (模块) |
+| WiFi (BCM4354) | ❌ TODO | 需要 brcmfmac 固件 + 从机器提取 NVRAM |
+| 真实显示管线 (tegra-drm + JDI 面板) | ❌ TODO | `jdi,lpm089a128a` 面板驱动未进主线 |
+| 音频 / 传感器 / 摄像头 | ❌ TODO | 需要写或移植驱动 |
+| USB gadget (设备模式) | ❌ | 主线 xudc 只支持 Tegra210+ |
+| CPU 调频 (DFLL) | ❌ TODO | 主线 tegra132 无 dfll 节点，当前定频运行 |
+| 深度睡眠 (lp0) | ❌ | 建议 `no_console_suspend` 常开 |
+
+详细原因与后续计划见 `docs/porting-process.md`。
+
+## 常用操作
+
+```bash
+# 只重建内核+boot.img（不动 rootfs closure）
+nix --extra-experimental-features 'nix-command flakes' build .#bootimg -o out/boot.img
+
+# 查看最终内核 .config
+nix build .#kernel.configfile -o kernel-config
+
+# 进 flake dev shell（有 dtc / mkbootimg 可手工实验）
+nix develop
+
+# 设备上更新系统（内核需另执行 flounder-flash-boot）
+nixos-rebuild switch
+```

@@ -33,6 +33,31 @@ let
     ignoreConfigErrors = true;
   };
 
+  # A second, deliberately small kernel.  hboot refuses to boot a
+  # kernel whose decompressed gzip output exceeds roughly 40-48 MiB;
+  # the common-config kernel is 69 MiB.  This one starts from the arm64
+  # defconfig only (enableCommonConfig = false) and keeps the minimum
+  # needed by NixOS/systemd.
+  flounderKernelMinimal = pkgs.linuxKernel.kernels.linux_latest.override {
+    kernelPatches = [
+      {
+        name = "flounder-dts";
+        patch = ../kernel/0001-arm64-dts-nvidia-Add-support-for-the-HTC-Nexus-9-flounder.patch;
+      }
+      {
+        name = "tegra-gpt-sector";
+        patch = ../kernel/0002-block-partitions-efi-support-Tegra-gpt_sector.patch;
+      }
+    ];
+    structuredExtraConfig = (import ../kernel/kernel-config-minimal.nix) { inherit lib; };
+    enableCommonConfig = false;
+    # Without common-config's answer file, the config generator would
+    # otherwise answer "m" to every tristate question (turning on every
+    # driver and KUnit test as a module).  Use the Kconfig defaults.
+    autoModules = false;
+    ignoreConfigErrors = true;
+  };
+
   flounderInitramfs = pkgs.callPackage ../nix/flounder-initramfs.nix { };
 
   mkBootImage =
@@ -58,7 +83,7 @@ let
   # own parameters (androidboot.*, carveouts, ...) to these.
   # console=tty0 last: it becomes /dev/console (getty), while kernel
   # messages still go to both the serial port and the framebuffer.
-  bootCmdline = "earlycon=uart8250,mmio32,0x70006000 console=ttyS0,115200n8 console=tty0 no_console_suspend root=/dev/mmcblk0p31 rw";
+  bootCmdline = "console=ttyS0,115200n8 console=tty0 no_console_suspend maxcpus=1 clk_ignore_unused pd_ignore_unused gpt gpt_sector=69631 root=/dev/mmcblk0p31 rw";
 
   # Small helper script for the device: re-flash the boot partition
   # from a running system, so `nixos-rebuild switch` can update the
@@ -87,13 +112,19 @@ in
   # stage-1 initrd would never fit into the 32 MiB boot partition.
   boot.initrd.enable = false;
 
-  boot.kernelPackages = pkgs.linuxPackagesFor flounderKernel;
+  # hboot refuses kernels whose decompressed Image exceeds ~40 MiB;
+  # the common-config kernel is 69 MiB.  Use the minimal kernel.
+  boot.kernelPackages = pkgs.linuxPackagesFor flounderKernelMinimal;
   boot.kernelParams = [
-    "earlycon=uart8250,mmio32,0x70006000"
     "console=ttyS0,115200n8"
     "console=tty0"
     "no_console_suspend"
-    "root=/dev/mmcblk0p31"
+    "maxcpus=1"
+    "clk_ignore_unused"
+    "pd_ignore_unused"
+    "gpt"
+    "gpt_sector=69631"
+    "root=/dev/loop0"
     "rw"
   ];
 
@@ -103,13 +134,13 @@ in
   };
 
   # --- Root filesystem: UDA partition, ext4, grows to partition size ------
+  # The initramfs creates /dev/loop0 over the UDA offset because the
+  # Tegra GPT is not at LBA 1.  Use the same device here so NixOS's
+  # fstab/root mount units agree with what the initramfs mounted.
   fileSystems."/" = {
-    device = "/dev/mmcblk0p31";
+    device = "/dev/loop0";
     fsType = "ext4";
-    options = [
-      "x-systemd.growfs"
-      "noatime"
-    ];
+    options = [ "noatime" ];
   };
 
   swapDevices = [ ];
@@ -126,7 +157,7 @@ in
     # ramdisk stays at the hboot-default 0x11000000.
     bootimg = mkBootImage {
       cmdline = bootCmdline;
-      kernelOffset = "0x10008000";  # base 0x10000000 -> 0x20008000
+      kernelOffset = "0x00008000";  # base 0x10000000 -> 0x10008000
       ramdiskOffset = "0x01000000"; # -> 0x11000000
     };
     bootimg-highmem = mkBootImage {
@@ -134,11 +165,20 @@ in
       kernelOffset = "0x10008000";
       ramdiskOffset = "0x01000000";
     };
+    bootimg-minimal = pkgs.callPackage ../nix/flounder-bootimg.nix {
+      kernel = flounderKernelMinimal;
+      initramfs = flounderInitramfs;
+      cmdline = bootCmdline;
+      # Keep the original layout; the minimal image should be small
+      # enough to fit below the ramdisk.
+      kernelOffset = "0x00008000";
+      ramdiskOffset = "0x01000000";
+    };
     bootimg-rescue = mkBootImage {
       # Boots straight into a shell in the initramfs (kernel init=
       # applies to the initramfs), for debugging without a rootfs.
       cmdline = bootCmdline + " init=/bin/sh";
-      kernelOffset = "0x10008000";
+      kernelOffset = "0x00008000";
       ramdiskOffset = "0x01000000";
     };
     rootfs-image = rootfsImage { };

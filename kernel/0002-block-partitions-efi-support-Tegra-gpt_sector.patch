@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000002 Mon Sep 17 00:00:00 2001
+From: NixOS flounder port <flounder@localhost>
+Date: 2026-10-19
+Subject: [PATCH] block: partitions: efi: support Tegra gpt_sector=
+
+The HTC Nexus 9 (flounder) hboot stores the primary GPT header at LBA
+69631, with the partition entry array immediately before it.  This is
+not the standard LBA 1 location, so the mainline EFI partition parser
+never sees the partitions and /dev/mmcblk0p31 does not exist.
+
+Honour the "gpt_sector=<lba>" kernel command line parameter that hboot
+already passes, using it as the primary GPT header sector.
+
+Signed-off-by: NixOS flounder port <flounder@localhost>
+---
+diff -uN -r gpta/block/partitions/efi.c gptb/block/partitions/efi.c
+--- gpta/block/partitions/efi.c	2026-10-19 22:43:35.897057331 +0800
++++ gptb/block/partitions/efi.c	2026-10-19 22:43:36.560050730 +0800
+@@ -90,6 +90,19 @@
+ #include "check.h"
+ #include "efi.h"
+ 
++/*
++ * Tegra/hboot stores the GPT header at a non-standard sector (for the
++ * Nexus 9, LBA 69631, with the partition entries at LBA 69599).  The
++ * bootloader passes "gpt_sector=<lba>" on the kernel command line.
++ */
++static unsigned long long gpt_sector;
++
++static int __init gpt_sector_fn(char *str)
++{
++	return kstrtoull(str, 0, &gpt_sector) ? 0 : 1;
++}
++__setup("gpt_sector=", gpt_sector_fn);
++
+ /* This allows a kernel command line option 'gpt' to override
+  * the test for invalid PMBR.  Not __initdata because reloading
+  * the partition tables happens after init too.
+@@ -611,8 +624,11 @@
+ 						"protective" : "hybrid");
+ 	}
+ 
+-	good_pgpt = is_gpt_valid(state, GPT_PRIMARY_PARTITION_TABLE_LBA,
+-				 &pgpt, &pptes);
++	{
++		u64 primary_lba = gpt_sector ? gpt_sector :
++				  GPT_PRIMARY_PARTITION_TABLE_LBA;
++		good_pgpt = is_gpt_valid(state, primary_lba, &pgpt, &pptes);
++	}
+         if (good_pgpt)
+ 		good_agpt = is_gpt_valid(state,
+ 					 le64_to_cpu(pgpt->alternate_lba),

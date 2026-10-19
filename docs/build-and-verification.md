@@ -20,7 +20,7 @@
 | 救援 boot image（`init=/bin/sh`） | ✅ `out/bootimg-rescue` |
 | ext4 rootfs（NixOS 26.11 aarch64） | ✅ `out/rootfs.img`（4 GiB，实用 1.4 GiB，48 498 个文件） |
 | 镜像结构自检 | ✅ `scripts/analyze-bootimg.py` |
-| **hboot 实机引导** | ❌ 当前 7.2 Image 尚未被 hboot 成功引导（原因分析见第 4 节） |
+| **hboot 实机引导** | ✅ 最终成功（完整过程见第 8 节；第 4 节的失败分析保留作记录） |
 
 **当前最重要的结论**：镜像本身格式正确（Android boot v0、gzip
 Image、尾附 DTB、cmdline 正确），但 hboot 在引导前/早期就失败。
@@ -398,5 +398,114 @@ scripts/analyze-bootimg.py out/boot.img
 
 > 由于设备在最后一次 USB 复位后离线，本轮没有拿到串口日志；
 > 所有“实机行为”结论都来自 fastboot/USB 枚举状态和 Image 头分析。
-> 下一次设备恢复后，优先测试默认的 `out/boot.img`（高地址布局），并在串口上抓
-> `earlycon` 输出。
+> 最终结果见第 8 节。
+
+
+---
+
+## 8. 最终成功：从黑屏到 NixOS 登录
+
+这一节记录最后一段（2026-10-19 23:00–23:45）的收尾。
+
+### 8.1 hboot 的真正限制：解压后内核大小
+
+用 TWRP 内核做对照实验（在同一 gzip 流里填充到不同解压大小）：
+
+| 解压后大小 | 结果 |
+|---|---|
+| 15.5 MB（原 TWRP） | ✅ 启动 |
+| 20 / 24 / 28 / 32 / 40 MB | ✅ 启动 |
+| 48 / 56 / 64 / 72 MB | ❌ hboot 不跳转 |
+
+结论：**hboot 对解压后的 Image 有约 40–48 MiB 的上限**，不是压缩后
+大小，也不是 boot 分区大小。nixpkgs 默认 7.2 内核解压后 69 MB，
+因此无论怎么改 cmdline/DTB 都不会被引导。
+
+解决方案：`kernel/kernel-config-minimal.nix` + `enableCommonConfig = false`，
+只保留 Tegra132/NixOS 启动必需项，并把所有非 Tegra SoC、BPMP/IVC、
+SMMU、DRM（改用 legacy `FB_SIMPLE`）、声卡/媒体/WLAN/蓝牙等全部关掉。
+最终 Image **15.2 MB**，boot.img **7.8 MB**。
+
+### 8.2 显示：面板 regulator 被关掉
+
+第一次看到内核日志后屏幕变黑。原因是 `simple-framebuffer` 没有声明
+`dsi-supply/lcd-supply/io-supply`，regulator core 在 late init 把没人用的
+`avdd-lcd`/`iovdd-lcd` 关掉了。已在 DTS 中：
+
+- 给 simplefb 加三个 supply；
+- 给 `avdd_lcd`/`iovdd_lcd` 加 `regulator-always-on`。
+
+### 8.3 非标准 GPT：LBA 69631
+
+主线 GPT 解析器只读 LBA 1；这台机器的 GPT 头在 **LBA 69631**，分区
+条目在它前面的 LBA 69599–69630。即使 cmdline 里有
+`gpt gpt_sector=69631`，主线默认解析器也不会用这个参数。
+
+最终方案：initramfs 在找不到 `/dev/mmcblk0p31` 时，直接用 UDA 的固定
+偏移挂载：
+
+```sh
+losetup -o 3737124864 /dev/loop0 /dev/mmcblk0
+mount -t ext4 /dev/loop0 /mnt
+```
+
+同时把 NixOS 的 `fileSystems."/".device` 改成 `/dev/loop0`，不再依赖
+GPT。另外保留了一个 `gpt_sector` 内核补丁
+（`kernel/0002-block-partitions-efi-support-Tegra-gpt_sector.patch`），
+供以后想恢复标准分区节点时使用；当前启动路径不依赖它。
+
+### 8.4 rootfs 必须逐字节写入
+
+`fastboot flash userdata out/rootfs.img` 会自动做 sparse，**跳过零块**；
+目标分区里残留的旧数据导致 ext4 空闲块位图校验失败
+（`bg 31: bad block bitmap checksum`），并且部分文件缺失。
+
+最终用 TWRP + adb 逐字节写：
+
+```bash
+fastboot boot hboot-analysis/twrp-flounder.img
+adb push out/rootfs.img /dev/block/mmcblk0p31   # 4 GiB，约 8 分钟
+adb shell sync
+adb reboot bootloader
+fastboot flash boot out/boot.img
+fastboot reboot
+```
+
+### 8.5 initramfs 的绝对 symlink 误判
+
+挂载 rootfs 后检查
+`[ -x /mnt/nix/var/nix/profiles/system/init ]` 会失败，因为
+`/nix/var/nix/profiles/system` 是**绝对 symlink**，内核会把它解析到
+initramfs 自己的 `/nix/store`。改成先 `readlink`，再检查
+`/mnt$target/init`，或者直接 `switch_root` 即可。
+
+### 8.6 最终结果与使用
+
+设备成功进入 NixOS，屏幕显示系统日志。平板的 micro-USB 此时是
+**USB host**，电脑端没有 adb。输入命令的方式：
+
+1. **USB OTG 转接头 + USB 键盘**：按 Enter，tty1 的 `root` 自动登录，
+   直接得到 shell。
+2. **UART 串口**：测试点 115200 8N1，root / `flounder`。
+3. **网络/SSH**：WiFi 还缺 BCM4354 固件/NVRAM，USB 网卡驱动也没编，
+   暂不可用。
+
+登录后：
+
+```bash
+nixos-version
+lsblk          # / 显示为 /dev/loop0，正常
+dmesg | less
+```
+
+产物（`out/`）：
+
+| 文件 | 大小 | 说明 |
+|---|---|---|
+| `boot.img` | 7.8 MB | 极小内核 + loop 挂载 initramfs，最终启动成功 |
+| `rootfs.img` | 4 GiB | NixOS 26.11 aarch64 rootfs（loop0 fstab） |
+| `bootimg-rescue` | 7.8 MB | `init=/bin/sh` 救援镜像 |
+| `SHA256SUMS.txt` | – | 校验和 |
+
+`out/rootfs.img` 的 sha256：`9cd4366c…ff7a6`；`out/boot.img`：
+`6bfd05c3…57ebe`。

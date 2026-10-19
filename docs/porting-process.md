@@ -345,3 +345,24 @@ checkout 被 `nix.registry` 拉进闭包（4.5 GiB），已用
   链接复制成真实文件，避免 GC 后产物消失。
 - `documentation.enable = false`、去掉 iwd/iw，是为了缩短交叉编译
   closure；WiFi 反正还缺固件/NVRAM。
+
+### 11.5 最终结果（2026-10-19 23:45）
+
+**NixOS 26.11-unstable 已在真机 HT4ARJT01614 上启动成功。**
+
+最后解决的几个点：
+
+1. **hboot 内核大小上限**：实测解压后 40 MB 能启动、48 MB 不能。
+   nixpkgs 默认 7.2 内核 69 MB，必须用 `enableCommonConfig=false` 的
+   极小内核（15.2 MB）；同时关闭 Tegra132 上没有的 BPMP/IVC/SMMU。
+2. **显示黑屏**：simplefb 没声明 `dsi/lcd/io-supply`，regulator core
+   关掉了 `avdd-lcd`/`iovdd-lcd`。DTS 加 supply + always-on 后解决。
+3. **GPT 在 LBA 69631**：主线解析器只读 LBA 1。initramfs 改为用
+   `losetup -o 3737124864` 直接挂 UDA，NixOS fstab 用 `/dev/loop0`。
+4. **rootfs 必须 raw 写**：`fastboot flash` 的 sparse 会跳过零块，
+   导致 ext4 位图损坏。改用 TWRP + `adb push` 逐字节写 4 GiB。
+5. **initramfs 绝对 symlink 误判**：`/nix/var/nix/profiles/system`
+   是绝对链接，检查时要先 `readlink` 再拼 `/mnt$target/init`。
+
+设备输入：micro-USB 是 host 模式，用 USB OTG 键盘（tty1 root 自动
+登录）或 UART 串口（115200，root/`flounder`）。WiFi/SSH 仍是 TODO。

@@ -11,19 +11,34 @@ arm64）适配 **NixOS 26.11-unstable**（nixpkgs master，2026-10）的完整�
               └─ rootfs: UDA 分区 (/dev/mmcblk0p31, ext4, systemd-growfs 自动扩容)
 ```
 
-## 当前状态（2026-10-19 晚）
+## 当前状态（2026-10-19 深夜）
 
-- ✅ 内核、DTS、initramfs、boot.img、rootfs 的构建流程已经跑通，
-  产物在 `out/`（`boot.img` 22.7 MB、`rootfs.img` 4 GiB/1.4 GiB used、
-  `SHA256SUMS.txt`；见 [docs/build-and-verification.md](docs/build-and-verification.md)）。
-- ✅ 修掉了 cmdline 引号、initramfs applet、MMC_BLOCK/CRC32C 模块化、
-  rootfs 属主/Nix 数据库等构建期问题。
-- ❌ **hboot 实机引导尚未成功**：7.2 内核解压后约 69 MB，会覆盖
-  hboot 固定在 0x11000000 的 ramdisk；EFI_ZBOOT 已经排除。
-  当前 `out/boot.img` 已改为把内核加载到 0x20008000（实际
-  0x90008000）、ramdisk 留在 0x11000000，等待设备复位后验证。
-- ⚠️ 最后一次测试后设备需要人工断电复位，恢复原始 boot 分区用
-  `scripts/restore-boot.sh`。
+- ✅ **NixOS 26.11-unstable 已在真机（HT4ARJT01614）上启动成功。**
+- ✅ 构建产物在 `out/`：`boot.img` 7.8 MB（15.2 MB 解压内核）、
+  `rootfs.img` 4 GiB、`bootimg-rescue`、`SHA256SUMS.txt`。
+- ✅ 关键结论：hboot 拒绝解压后超过 ~40 MiB 的内核；nixpkgs 默认
+  7.2 内核是 69 MiB。现在使用 `enableCommonConfig = false` 的
+  极小内核（15.2 MB），并关闭 Tegra132 上会挂死的 BPMP/IVC/SMMU。
+- ✅ GPT 头在 LBA 69631（非标准位置），主线解析不到；initramfs 用
+  `losetup -o 3737124864` 直接挂载 UDA（`fstab` 已改为 `/dev/loop0`）。
+- ✅ rootfs 必须用 TWRP + `adb push` 逐字节写 4 GiB；`fastboot flash`
+  的 sparse 写入会跳过零块，导致 ext4 位图损坏。
+- ✅ 显示：DTB 里给 simplefb 加了 `dsi/lcd/io-supply`，并让
+  `avdd-lcd`/`iovdd-lcd` `always-on`，避免启动后黑屏。
+
+### 怎么在设备上输入命令
+
+平板的 micro-USB 现在是 **USB host**，电脑端不会出现 adb/串口。三种方式：
+
+1. **USB OTG 转接头 + USB 键盘**（最简单）：插上后按 Enter，
+   tty1 已配置 `root` 自动登录，应直接出现 `[root@flounder:~]#`。
+2. **UART 串口**：主板测试点 TX/RX/GND，115200 8N1；登录用户
+   `root`，密码 `flounder`。
+3. **网络**：WiFi 还缺 BCM4354 固件/NVRAM；USB 网卡驱动也未编译，
+   所以暂时不能 SSH。
+
+登录后可以运行 `nixos-version`、`ip a`、`dmesg`、`lsblk` 等。
+`/` 显示为 `/dev/loop0` 是正常的（绕过了 hboot 的非标准 GPT 位置）。
 
 ## 目录结构
 
@@ -43,7 +58,7 @@ arm64）适配 **NixOS 26.11-unstable**（nixpkgs master，2026-10）的完整�
 | `docs/porting-process.md` | **本次移植的完整过程与决策记录** |
 | `docs/build-and-verification.md` | **第二轮：构建、产物自检、实机验证与当前引导问题** |
 | `hboot-analysis/` | 设备 dump 原始产物（分区表、设备树、boot 分区备份等） |
-| `out/` | 构建产物（boot.img / boot-highmem.img / rootfs.img / SHA256SUMS.txt / logs） |
+| `out/` | 构建产物（boot.img / rootfs.img / bootimg-rescue / SHA256SUMS.txt / logs） |
 
 ## 快速开始
 
@@ -56,8 +71,7 @@ cache.nixos.org，内核源码来自 cdn.kernel.org。
 ```bash
 # 1. 构建（交叉编译，无需 qemu；第一次会交叉编译 aarch64 userland）
 NIX_MAX_JOBS=4 NIX_CORES=2 scripts/build-all.sh
-#    → out/boot.img       内核 @0x20008000 + ramdisk @0x11000000
-#    → out/boot-highmem.img 与默认相同的布局（兼容旧名字）
+#    → out/boot.img       15.2 MB 极小内核 + initramfs（loop 挂载 UDA）
 #    → out/rootfs.img     NixOS rootfs (ext4，首启自动扩容)
 #    → out/bootimg-rescue 救援镜像（直接进 initramfs shell）
 

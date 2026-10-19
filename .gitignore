@@ -4,3 +4,5 @@ result-*
 out/*
 !out/SHA256SUMS.txt
 *.qcow2
+
+pictures/

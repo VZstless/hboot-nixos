@@ -56,6 +56,13 @@
 			clocks = <&tegra_car TEGRA124_CLK_DISP1>,
 				 <&tegra_car TEGRA124_CLK_DSIA>,
 				 <&tegra_car TEGRA124_CLK_DSIB>;
+			/* Keep the panel rails enabled; otherwise the
+			 * regulator core disables the unused fixed
+			 * regulators late in boot and the screen goes
+			 * black while the system keeps running. */
+			dsi-supply = <&avdd_dsi_csi>;
+			lcd-supply = <&avdd_lcd>;
+			io-supply = <&iovdd_lcd>;
 		};
 	};
 
@@ -167,6 +174,7 @@
 		gpio = <&gpio TEGRA_GPIO(R, 0) GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 		regulator-boot-on;
+		regulator-always-on;
 		vin-supply = <&vdd_battery>;
 	};
 
@@ -178,6 +186,7 @@
 		gpio = <&gpio TEGRA_GPIO(Q, 2) GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 		regulator-boot-on;
+		regulator-always-on;
 		vin-supply = <&vdd_1v8>;
 	};
 };
@@ -698,8 +707,6 @@
 	charger@6b {
 		compatible = "ti,bq24192";
 		reg = <0x6b>;
-		interrupt-parent = <&gpio>;
-		interrupts = <TEGRA_GPIO(J, 0) IRQ_TYPE_EDGE_FALLING>;
 		monitored-battery = <&battery>;
 	};
 };
@@ -712,15 +719,12 @@
 	palmas: pmic@58 {
 		compatible = "ti,tps65913";
 		reg = <0x58>;
-		interrupts = <GIC_SPI 86 IRQ_TYPE_LEVEL_HIGH>;
 		#interrupt-cells = <2>;
 		interrupt-controller;
 		ti,system-power-controller;
 
 		palmas_rtc: rtc {
 			compatible = "ti,palmas-rtc";
-			interrupt-parent = <&palmas>;
-			interrupts = <8 0>;
 		};
 
 		gpio {

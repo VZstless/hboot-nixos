@@ -19,6 +19,14 @@ let
         name = "flounder-dts";
         patch = ../kernel/0001-arm64-dts-nvidia-Add-support-for-the-HTC-Nexus-9-flounder.patch;
       }
+      {
+        name = "flounder-usb-network";
+        patch = ../kernel/0003-flounder-usb-gadget-wifi.patch;
+      }
+      {
+        name = "flounder-defconfig-rfkill";
+        patch = ../kernel/0004-arm64-defconfig-disable-rfkill-module.patch;
+      }
       # Note: linux_latest already carries bridge_stp_helper and
       # request_key_helper (see pkgs/top-level/linux-kernels.nix); do
       # not add them again.
@@ -48,6 +56,14 @@ let
         name = "tegra-gpt-sector";
         patch = ../kernel/0002-block-partitions-efi-support-Tegra-gpt_sector.patch;
       }
+      {
+        name = "flounder-usb-network";
+        patch = ../kernel/0003-flounder-usb-gadget-wifi.patch;
+      }
+      {
+        name = "flounder-defconfig-rfkill";
+        patch = ../kernel/0004-arm64-defconfig-disable-rfkill-module.patch;
+      }
     ];
     structuredExtraConfig = (import ../kernel/kernel-config-minimal.nix) { inherit lib; };
     enableCommonConfig = false;
@@ -59,6 +75,16 @@ let
   };
 
   flounderInitramfs = pkgs.callPackage ../nix/flounder-initramfs.nix { };
+
+  # The readable BCM4354 calibration data comes from the wifi_eeprom node in
+  # hboot-analysis/runtime-devtree.dts. brcmfmac tries both the generic and
+  # board-qualified filenames, so install both names into the firmware tree.
+  flounderWifiNvram = pkgs.runCommand "flounder-bcm4354-nvram" { } ''
+    install -Dm0644 ${../firmware/brcmfmac4354-sdio.txt} \
+      $out/lib/firmware/brcm/brcmfmac4354-sdio.txt
+    install -Dm0644 ${../firmware/brcmfmac4354-sdio.txt} \
+      $out/lib/firmware/brcm/brcmfmac4354-sdio.htc,flounder.txt
+  '';
 
   mkBootImage =
     args:
@@ -83,7 +109,7 @@ let
   # own parameters (androidboot.*, carveouts, ...) to these.
   # console=tty0 last: it becomes /dev/console (getty), while kernel
   # messages still go to both the serial port and the framebuffer.
-  bootCmdline = "console=ttyS0,115200n8 console=tty0 no_console_suspend maxcpus=1 clk_ignore_unused pd_ignore_unused gpt gpt_sector=69631 root=/dev/mmcblk0p31 rw";
+  bootCmdline = "console=ttyS0,115200n8 console=tty0 no_console_suspend usbcore.autosuspend=-1 maxcpus=1 clk_ignore_unused pd_ignore_unused gpt gpt_sector=69631 root=/dev/mmcblk0p31 rw";
 
   # Small helper script for the device: re-flash the boot partition
   # from a running system, so `nixos-rebuild switch` can update the
@@ -119,6 +145,7 @@ in
     "console=ttyS0,115200n8"
     "console=tty0"
     "no_console_suspend"
+    "usbcore.autosuspend=-1"
     "maxcpus=1"
     "clk_ignore_unused"
     "pd_ignore_unused"
@@ -149,15 +176,14 @@ in
 
   # --- Build products ------------------------------------------------------
   system.build = {
-    # The 7.2 Image decompresses to ~69 MiB.  hboot maps the boot
-    # header addresses with a +0x70000000 DRAM offset and puts the
-    # ramdisk at 0x11000000 (-> 0x81000000), which the default kernel
-    # load address (0x10008000 -> 0x80008000) would overwrite.
-    # Load the kernel at 0x20008000 (-> 0x90008000) instead; the
-    # ramdisk stays at the hboot-default 0x11000000.
+    # hboot maps the boot header addresses with a +0x70000000 DRAM offset and
+    # puts the ramdisk at 0x11000000 (-> 0x81000000).  The minimal 7.3 Image
+    # is small enough for hboot, but still ends at 0x11028000 when loaded at
+    # 0x10008000, so the default layout would overlap the ramdisk by 160 KiB.
+    # Load all normal/rescue images at 0x20008000 (-> 0x90008000) instead.
     bootimg = mkBootImage {
       cmdline = bootCmdline;
-      kernelOffset = "0x00008000";  # base 0x10000000 -> 0x10008000
+      kernelOffset = "0x10008000";  # base 0x10000000 -> 0x20008000
       ramdiskOffset = "0x01000000"; # -> 0x11000000
     };
     bootimg-highmem = mkBootImage {
@@ -169,16 +195,15 @@ in
       kernel = flounderKernelMinimal;
       initramfs = flounderInitramfs;
       cmdline = bootCmdline;
-      # Keep the original layout; the minimal image should be small
-      # enough to fit below the ramdisk.
-      kernelOffset = "0x00008000";
+      # Keep the same non-overlapping layout as the normal image.
+      kernelOffset = "0x10008000";
       ramdiskOffset = "0x01000000";
     };
     bootimg-rescue = mkBootImage {
       # Boots straight into a shell in the initramfs (kernel init=
       # applies to the initramfs), for debugging without a rootfs.
       cmdline = bootCmdline + " init=/bin/sh";
-      kernelOffset = "0x00008000";
+      kernelOffset = "0x10008000";
       ramdiskOffset = "0x01000000";
     };
     rootfs-image = rootfsImage { };
@@ -231,9 +256,12 @@ in
   boot.extraModulePackages = [ ];
 
   # Tegra SoC temperature.
-  hardware.enableRedistributableFirmware = lib.mkDefault false;
+  hardware.enableRedistributableFirmware = true;
+  hardware.firmware = [ flounderWifiNvram ];
 
-  networking.wireless.enable = false; # brcmfmac firmware TODO, see docs
+  # The driver and firmware are present; credentials remain user-specific.
+  # USB ECM is the credential-free recovery path used for the first login.
+  networking.wireless.enable = false;
 
   # Denver runs at a fixed frequency until DFLL support is ported.
   powerManagement.cpuFreqGovernor = "schedutil";

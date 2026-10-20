@@ -1,0 +1,14 @@
+diff --git a/arch/arm64/configs/defconfig b/arch/arm64/configs/defconfig
+--- a/arch/arm64/configs/defconfig
++++ b/arch/arm64/configs/defconfig
+@@ -198,8 +198,8 @@ CONFIG_BT_NXPUART=m
+ CONFIG_CFG80211=m
+ CONFIG_MAC80211=m
+ CONFIG_MAC80211_LEDS=y
+-CONFIG_RFKILL=m
+-CONFIG_RFKILL_GPIO=m
++# CONFIG_RFKILL is not set
++# CONFIG_RFKILL_GPIO is not set
+ CONFIG_NET_9P=m
+ CONFIG_NET_9P_VIRTIO=m
+ CONFIG_NFC=m

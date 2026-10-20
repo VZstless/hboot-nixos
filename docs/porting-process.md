@@ -233,21 +233,26 @@ rootfs 镜像和少量本地包。
    只留 always-on 稳压器（hboot 已经把它们打开了）。
 3. **CPU 二核**：spin-table 如果 hboot 实现与预期不符，表现为只有
    单核上线（不致命）；上机后 `cat /proc/cpuinfo` 确认。
-4. **WiFi**：需要 ① linux-firmware 的 `brcmfmac4354-sdio.bin`
-   （gitlab 不可达，需找替代源或从设备 TWRP 下 dump 出
-   /vendor/firmware）② NVRAM：从设备 DT 里的 wifi_eeprom/或
-   cmdline 注入的 wifimacaddr 构造 `brcmfmac4354-sdio.txt`。
-5. **显示管线**：写一个 `panel-jdi-lpm089a128a` 主线驱动
+4. **WiFi**：本轮已完成驱动/DTS/NVRAM 接入：内核启用
+   `brcmfmac` SDIO，设备树加入 SDR104、1.8 V、host-wake、board type 和
+   dump 得到的 MAC，rootfs 同时提供 linux-firmware 与
+   `brcmfmac4354-sdio.txt`。仍需上机确认当前 linux-firmware 版本包含
+   `brcmfmac4354-sdio.bin`；验收步骤见
+   `docs/access-and-networking.md`。
+5. **USB gadget / SSH**：本轮已改用 Tegra132 legacy UTMI UDC + mainline
+   ChipIdea glue，固定为 peripheral，并启用 CDC ACM + ECM。设备侧地址为
+   `192.168.77.2/30`，可通过 micro-USB 串口或 SSH 进入；硬件验收仍待完成。
+6. **显示管线**：写一个 `panel-jdi-lpm089a128a` 主线驱动
    （参考 drivers/gpu/drm/panel/panel-jdi-lpm102a188a.c 和下游
    DTS 的时序），接 tegra-dsi ganged mode + pwm 背光（ph1/pwm1，
    使能引脚 avdd-lcd R0 / iovdd-lcd Q2 / dcdc-en EE5）。完成后可
    上 wayland。
-6. **CPU 调频**：把 tegra124 的 DFLL 节点（70040084，下游 DT 有完整
+7. **CPU 调频**：把 tegra124 的 DFLL 节点（70040084，下游 DT 有完整
    的 emc/dfll 参数）移植到 tegra132 板级 DTS + `tegra124-cpufreq`。
    当前 CPU 固定在 hboot 设定的频率。
-7. **音频**（AHUB/i2s + rt5677）、**传感器**（htc sensorhub 私有协议，
+8. **音频**（AHUB/i2s + rt5677）、**传感器**（htc sensorhub 私有协议，
    难）、**摄像头**、**lp0 深度睡眠**。
-8. **上游化**：DTS 整理成可提交的 patch series（binding 检查
+9. **上游化**：DTS 整理成可提交的 patch series（binding 检查
    `make dt_binding_check`、拆 regulator/pinctrl 等）投到
    linux-tegra 邮件列表；NixOS 侧可考虑做成 flake 的
    nixos-hardware 风格模块。
@@ -331,8 +336,8 @@ boot header ramdisk 0x11000000 -> 实际 0x81000000
 
 ### 11.3 rootfs 产物
 
-rootfs 已成功生成：4 GiB ext4，label `nixos-flounder`，实用约 1.4 GiB，
-48 498 个文件；`e2fsck -fn` 干净，`/nix-path-registration` 和
+rootfs 已成功生成：4 GiB ext4，label `nixos-flounder`，已用约 2.14 GiB，
+54 518 个文件；`e2fsck -fn` 干净，`/nix-path-registration` 和
 `/nix/var/nix/profiles/system` 都在。第一次构建时 nixpkgs 的本地
 checkout 被 `nix.registry` 拉进闭包（4.5 GiB），已用
 `nix.registry = lib.mkForce { }` 去掉。
@@ -343,8 +348,9 @@ checkout 被 `nix.registry` 拉进闭包（4.5 GiB），已用
   恢复后先执行 `scripts/restore-boot.sh` 还原 `hboot-analysis/LNX.img`。
 - 构建日志在 `out/logs/`；`scripts/build-all.sh` 现在会把 store 符号
   链接复制成真实文件，避免 GC 后产物消失。
-- `documentation.enable = false`、去掉 iwd/iw，是为了缩短交叉编译
-  closure；WiFi 反正还缺固件/NVRAM。
+- `documentation.enable = false` 仍用于缩短交叉编译 closure；本轮已加入
+  `iw`、`wpa_supplicant`、linux-firmware 和 BCM4354 NVRAM，Wi-Fi 凭据仍由
+  用户按实际网络配置。
 
 ### 11.5 最终结果（2026-10-19 23:45）
 
@@ -354,7 +360,7 @@ checkout 被 `nix.registry` 拉进闭包（4.5 GiB），已用
 
 1. **hboot 内核大小上限**：实测解压后 40 MB 能启动、48 MB 不能。
    nixpkgs 默认 7.2 内核 69 MB，必须用 `enableCommonConfig=false` 的
-   极小内核（15.2 MB）；同时关闭 Tegra132 上没有的 BPMP/IVC/SMMU。
+   极小内核（约 15.7 MiB）；同时关闭 Tegra132 上没有的 BPMP/IVC/SMMU。
 2. **显示黑屏**：simplefb 没声明 `dsi/lcd/io-supply`，regulator core
    关掉了 `avdd-lcd`/`iovdd-lcd`。DTS 加 supply + always-on 后解决。
 3. **GPT 在 LBA 69631**：主线解析器只读 LBA 1。initramfs 改为用
@@ -364,5 +370,7 @@ checkout 被 `nix.registry` 拉进闭包（4.5 GiB），已用
 5. **initramfs 绝对 symlink 误判**：`/nix/var/nix/profiles/system`
    是绝对链接，检查时要先 `readlink` 再拼 `/mnt$target/init`。
 
-设备输入：micro-USB 是 host 模式，用 USB OTG 键盘（tty1 root 自动
-登录）或 UART 串口（115200，root/`flounder`）。WiFi/SSH 仍是 TODO。
+设备输入：本轮镜像把 micro-USB 固定为 CDC ACM + ECM device 模式，主机可用
+`/dev/ttyACM0` 或给 USB 网卡配置 `192.168.77.1/30` 后 SSH 到
+`192.168.77.2`；UART 115200 仍作为回退入口。WiFi 驱动、firmware 和
+NVRAM 已加入，凭据与最终硬件验收见 `docs/access-and-networking.md`。

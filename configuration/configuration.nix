@@ -1,7 +1,7 @@
 # NixOS 26.11-unstable configuration for the HTC Nexus 9 (flounder).
 #
-# Minimal but usable: serial console, USB (host), sshd once networking
-# exists. Everything device-specific lives in flounder-hardware.nix.
+# Minimal but usable: serial console, USB CDC ACM/ECM, and sshd over the
+# USB network link. Everything device-specific lives in flounder-hardware.nix.
 
 { config, pkgs, lib, ... }:
 
@@ -29,12 +29,26 @@
 
   # --- Networking -----------------------------------------------------------
   networking.hostName = "flounder";
-  networking.useDHCP = false; # no ethernet yet; wifi is TODO (see docs)
+  networking.useDHCP = false;
+  # The built-in CDC composite gadget exposes a stable point-to-point link.
+  # The host side should use 192.168.77.1/30 and can then SSH to this address.
+  networking.interfaces.usb0 = {
+    useDHCP = false;
+    ipv4.addresses = [
+      {
+        address = "192.168.77.2";
+        prefixLength = 30;
+      }
+    ];
+  };
   networking.firewall.enable = false;
 
   services.openssh = {
     enable = true;
-    settings.PermitRootLogin = "yes";
+    settings = {
+      PermitRootLogin = "yes";
+      PasswordAuthentication = true;
+    };
   };
 
   # --- Console ---------------------------------------------------------------
@@ -47,17 +61,36 @@
     # Tegra UART is quirky after suspend; keep it alive.
     serviceConfig.Restart = "always";
   };
+  # USB CDC ACM appears as /dev/ttyACM0 on the host and /dev/ttyGS0 here.
+  systemd.services."serial-getty@ttyGS0" = {
+    enable = true;
+    serviceConfig.Restart = "always";
+  };
 
   # --- Software --------------------------------------------------------------
-  environment.systemPackages = with pkgs; [
-    vim
-    htop
-    usbutils
-    pciutils
-    ethtool
-    # iwd/iw are intentionally absent until the BCM4354 firmware and
-    # NVRAM are available (see docs/porting-process.md, TODO).
-  ];
+  environment.systemPackages =
+    let
+      # fastfetch enables optional Enlightenment support in its upstream
+      # build inputs even when the wrapper does not use that feature.  EFL's
+      # eolian_gen is a target executable, so it cannot be built for this
+      # cross-compilation without a separate native-tool override.
+      fastfetchUnwrapped = pkgs.fastfetch-unwrapped.overrideAttrs (old: {
+        buildInputs = lib.remove pkgs.enlightenment.efl old.buildInputs;
+      });
+      fastfetch = pkgs.fastfetch.override {
+        fastfetch-unwrapped = fastfetchUnwrapped;
+      };
+    in
+    with pkgs; [
+      vim
+      htop
+      usbutils
+      pciutils
+      ethtool
+      fastfetch
+      iw
+      wpa_supplicant
+    ];
 
   # No desktop on the first iteration. The simple-framebuffer console
   # works; real display support via tegra-drm is future work.

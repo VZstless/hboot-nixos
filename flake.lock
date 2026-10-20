@@ -2,8 +2,8 @@
   "nodes": {
     "nixpkgs": {
       "locked": {
-        "lastModified": 1792383273,
-        "narHash": "sha256-PCvB4uqEEtfOgcs8nVpLePwEV+VxtkOzvNxmxu/CMSw=",
+        "lastModified": 1792476316,
+        "narHash": "sha256-BoL2DDUtsz+DgVsUDhLNQ508q0i33aWSCOrjlfAUNoo=",
         "path": "/home/lumiere/workspace/nixpkgs",
         "type": "path"
       },

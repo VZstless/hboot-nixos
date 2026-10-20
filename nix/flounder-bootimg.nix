@@ -22,12 +22,11 @@
   dtb ? "${kernel}/dtbs/nvidia/tegra132-flounder.dtb",
   initramfs,
   cmdline ? "",
-  # The 7.2 Image is ~69 MiB once decompressed; hboot's default
-  # ramdisk address (0x11000000) would be overwritten by the kernel.
-  # Put the initramfs well above the kernel instead.  hboot reads these
-  # addresses from the Android boot image header.
-  ramdiskOffset ? "0x05000000",
-  kernelOffset ? "0x00008000",
+  # hboot reads these addresses from the Android boot image header.  Use the
+  # high kernel layout by default: even the small flounder Image extends
+  # slightly past 0x11000000 at the legacy 0x10008000 load address.
+  ramdiskOffset ? "0x01000000",
+  kernelOffset ? "0x10008000",
   tagsOffset ? "0x00000100",
 }:
 

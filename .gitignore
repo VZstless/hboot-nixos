@@ -1,8 +1,14 @@
-.src-cache/
+# Local Nix evaluation/build links.
 result
 result-*
-out/*
-!out/SHA256SUMS.txt
+.direnv/
+
+# Generated boot/rootfs images and build logs.
+/out/*
+!/out/SHA256SUMS.txt
+
+# Local source caches and VM images.
+.src-cache/
 *.qcow2
 
 pictures/

@@ -1,0 +1,35 @@
+# HTC Nexus 9 (flounder) BCM4354 SDIO calibration data.
+# Extracted from the wifi_eeprom property in hboot-analysis/runtime-devtree.dts.
+macaddr=B4:CE:F6:07:07:27
+sromrev=3
+vendorid=0x14e4
+devid=0x432f
+boardtype=0x4b9
+boardrev=0x32
+boardflags=0x200
+xtalfreq=37400
+aa2g=1
+aa5g=0
+ag0=255
+pa0b0=6003
+pa0b1=64086
+pa0b2=65195
+pa0itssit=62
+pa0maxpwr=68
+opo=16
+mcs2gpo0=0x6666
+mcs2gpo1=0x6666
+rssismf2g=0xa
+rssismc2g=0xb
+rssisav2g=0x3
+bxa2g=0
+ccode=ALL
+cctl=0x0
+cckdigfilttype=0
+ofdmdigfilttype=1
+opo2g=0
+boardnum=1
+nocrc=1
+optimage_size=182
+sdef_gout=0
+sdef_oobonly=1

@@ -1,6 +1,6 @@
 # 构建产物与上机验证记录（第二轮）
 
-> 日期：2026-10-19 晚
+> 日期：2026-10-20
 > 目标：把第一轮留下的工程真正构建出可刷写产物，并在
 > HTC Nexus 9（flounder / hboot 3.43.0.0114）上做引导验证。
 > 设备序列号：HT4ARJT01614
@@ -15,10 +15,10 @@
 
 | 项目 | 状态 |
 |---|---|
-| 内核 7.2.11 + flounder DTS 交叉编译 | ✅ |
-| Android boot image v0（kernel+DTB+initramfs） | ✅ `out/boot.img`（22.7 MB） |
+| 内核 7.3 + flounder DTS 交叉编译 | ✅ |
+| Android boot image v0（kernel+DTB+initramfs） | ✅ `out/boot.img`（约 8.3 MB） |
 | 救援 boot image（`init=/bin/sh`） | ✅ `out/bootimg-rescue` |
-| ext4 rootfs（NixOS 26.11 aarch64） | ✅ `out/rootfs.img`（4 GiB，实用 1.4 GiB，48 498 个文件） |
+| ext4 rootfs（NixOS 26.11 aarch64） | ✅ `out/rootfs.img`（4 GiB，已用约 2.14 GiB，54 518 个文件） |
 | 镜像结构自检 | ✅ `scripts/analyze-bootimg.py` |
 | **hboot 实机引导** | ✅ 最终成功（完整过程见第 8 节；第 4 节的失败分析保留作记录） |
 
@@ -160,12 +160,21 @@ EFI_ZBOOT = force no;
 ### 1.7 构建时间/镜像体积的裁剪
 
 第一版内核按 nixpkgs 默认配置编译所有 DRM/WiFi/音频/媒体模块，单次
-内核构建约 1 小时，`Image` 解压后 69 MB。为了先让引导链跑通，本轮
-在 `kernel-config.nix` 里关闭了本机不可能用到的子系统（AMDGPU、
-Radeon、Nouveau、Tegra DRM、声卡、媒体、WLAN、蓝牙、InfiniBand、
-ISDN、HAMRadio、STAGING、IIO 等），并关闭 BTF/调试信息相关选项的
-计划见下一轮。当前 `Image` 仍然较大（约 69 MB），这是第 4 节问题的
-直接原因。
+内核构建约 1 小时，`Image` 解压后 69 MB。为了让 hboot 的内存布局可用，
+本轮在 `kernel-config-minimal.nix` 里关闭本机不需要的子系统（AMDGPU、
+Radeon、Nouveau、Tegra DRM、声卡、媒体、蓝牙、InfiniBand、ISDN、
+HAMRadio、STAGING、IIO 等），同时显式保留 MMC、USB gadget 和 BCM4354
+WLAN 所需选项。当前 `Image` 解压后约 15.7 MiB，boot image 中的内核与
+ramdisk 已通过地址布局检查。
+
+### 1.8 fastfetch 的交叉构建兼容性
+
+当前 nixpkgs 的 `fastfetch-unwrapped` 包会把 Enlightenment EFL 放进构建
+输入，即使没有启用 Enlightenment 输出。EFL 的 `eolian_gen` 是目标架构
+程序，交叉构建时无法在 x86_64 构建机上执行，第一次完整 rootfs 构建因此
+在该依赖处失败。`configuration/configuration.nix` 对 fastfetch 做了局部
+`overrideAttrs`，移除未使用的 `enlightenment.efl`；fastfetch 本身仍然
+安装在目标系统中。
 
 ---
 
@@ -178,18 +187,18 @@ scripts/analyze-bootimg.py out/boot.img
 scripts/analyze-bootimg.py out/boot-highmem.img
 ```
 
-当前 `out/boot.img` 的关键字段：
+当前 `out/boot.img` 的关键字段（默认使用无重叠的高地址布局）：
 
 | 字段 | 值 |
 |---|---|
 | Android boot header | v0, pagesize 2048 |
-| kernel | 21,053,221 bytes @ `0x20008000`（实际 0x90008000，见第 3.1/4 节） |
-| ramdisk | 1,712,092 bytes @ `0x11000000`（hboot 默认值） |
+| kernel | 6,931,557 bytes @ `0x20008000`（实际 0x90008000，解压后约 15.7 MiB） |
+| ramdisk | 1,712,388 bytes @ `0x11000000`（hboot 默认值） |
 | tags | `0x10000100` |
-| cmdline | `earlycon=uart8250,mmio32,0x70006000 console=ttyS0,115200n8 console=tty0 no_console_suspend root=/dev/mmcblk0p31 rw` |
-| 解压后 Image | 68,909,064 bytes，`code0=0xd503201f`（NOP），`code1=0x14bf443b`（branch） |
-| 尾附 DTB | 44,803 bytes，magic `d00dfeed`，totalsize 44,803 |
-| ramdisk | gzip -> 3,429,888 bytes，newc cpio |
+| cmdline | `console=ttyS0,115200n8 console=tty0 no_console_suspend usbcore.autosuspend=-1 maxcpus=1 clk_ignore_unused pd_ignore_unused gpt gpt_sector=69631 root=/dev/mmcblk0p31 rw` |
+| 解压后 Image | 16,463,880 bytes，`code0=0xd503201f`（NOP），`code1=0x1435782f`（branch） |
+| 尾附 DTB | 44,916 bytes，magic `d00dfeed`，totalsize 44,916 |
+| ramdisk | gzip -> 3,430,912 bytes，newc cpio |
 
 rootfs 镜像自检（不依赖设备）：
 
@@ -201,9 +210,9 @@ debugfs -R 'stat /nix-path-registration' out/rootfs.img
 ```
 
 结果：label `nixos-flounder`，4 GiB / 1 048 576 blocks，inode 524 288，
-48 498 个文件，`e2fsck -fn` 干净；`/nix-path-registration` 0444
+54 518 个文件，`e2fsck -fn` 干净；`/nix-path-registration` 0444
 root:root；`/nix/var/nix/profiles/system` 和 `/init` 指向 store 里的
-`nixos-system-flounder-26.11.20261019.dirty`。
+`nixos-system-flounder-26.11.20261020.dirty`。
 
 内核配置中的启动关键项已逐条确认：
 
@@ -223,6 +232,15 @@ CONFIG_DRM_SIMPLEDRM=y
 CONFIG_FRAMEBUFFER_CONSOLE=y
 CONFIG_MMC_SDHCI_TEGRA=y
 CONFIG_USB_XHCI_TEGRA=y
+CONFIG_USB_GADGET=y
+CONFIG_USB_CHIPIDEA_TEGRA=y
+CONFIG_USB_CDC_COMPOSITE=y
+CONFIG_USB_F_ACM=y
+CONFIG_USB_F_ECM=y
+CONFIG_USB_U_ETHER=y
+CONFIG_CFG80211=y
+CONFIG_BRCMFMAC_SDIO=y
+CONFIG_FW_LOADER_COMPRESS_ZSTD=y
 CONFIG_MFD_PALMAS=y
 CONFIG_REGULATOR_PALMAS=y
 ```
@@ -378,7 +396,8 @@ scripts/analyze-bootimg.py out/boot.img
 
 `scripts/build-all.sh` 会把 `nix build` 的 store 符号链接复制成
 `out/` 下的真实文件，避免 `nix-collect-garbage` 后产物消失；日志在
-`out/logs/`。
+`out/logs/`。`out/` 下的镜像和日志由仓库根目录的 `.gitignore` 忽略，
+仅保留 `out/SHA256SUMS.txt` 作为可选的、可跟踪的校验和文件。
 
 ---
 
@@ -386,10 +405,10 @@ scripts/analyze-bootimg.py out/boot.img
 
 | 文件 | 说明 |
 |---|---|
-| `out/boot.img` | **默认** boot image：kernel @0x20008000，ramdisk @0x11000000（避开重叠） |
+| `out/boot.img` | **默认** boot image：kernel @0x20008000，ramdisk @0x11000000（无重叠） |
 | `out/boot-highmem.img` | 与默认相同的实验布局（保留旧名字方便测试） |
 | `out/bootimg-rescue` | `init=/bin/sh` 救援镜像 |
-| `out/rootfs.img` | NixOS ext4 rootfs（4 GiB；1.4 GiB used；sha256 `c55dc996…0a9d6`） |
+| `out/rootfs.img` | NixOS ext4 rootfs（4 GiB；约 2.14 GiB used；sha256 `6340864c…ddc1`） |
 | `out/SHA256SUMS.txt` | 所有产物的 sha256 |
 | `out/logs/*.log` | 本轮所有构建日志 |
 | `scripts/analyze-bootimg.py` | boot image/Image/DTB/ramdisk 结构检查工具 |
@@ -424,7 +443,8 @@ scripts/analyze-bootimg.py out/boot.img
 解决方案：`kernel/kernel-config-minimal.nix` + `enableCommonConfig = false`，
 只保留 Tegra132/NixOS 启动必需项，并把所有非 Tegra SoC、BPMP/IVC、
 SMMU、DRM（改用 legacy `FB_SIMPLE`）、声卡/媒体/WLAN/蓝牙等全部关掉。
-最终 Image **15.2 MB**，boot.img **7.8 MB**。
+最终 Image **约 15.7 MiB**，boot.img **约 8.3 MB**；新增 zstd firmware
+解压支持后仍保持在同一 hboot 可用范围内。
 
 ### 8.2 显示：面板 regulator 被关掉
 
@@ -491,14 +511,18 @@ initramfs 自己的 `/nix/store`。改成先 `readlink`，再检查
 
 ### 8.6 最终结果与使用
 
-设备成功进入 NixOS，屏幕显示系统日志。平板的 micro-USB 此时是
-**USB host**，电脑端没有 adb。输入命令的方式：
+设备成功进入 NixOS，屏幕显示系统日志。随后一轮镜像改动把平板的
+micro-USB 切换为 **USB device**，主机应看到 CDC ACM 串口和 CDC ECM 网卡；
+输入命令的方式：
 
-1. **USB OTG 转接头 + USB 键盘**：按 Enter，tty1 的 `root` 自动登录，
-   直接得到 shell。
-2. **UART 串口**：测试点 115200 8N1，root / `flounder`。
-3. **网络/SSH**：WiFi 还缺 BCM4354 固件/NVRAM，USB 网卡驱动也没编，
-   暂不可用。
+1. **USB 串口**：主机使用 `/dev/ttyACM0`，设备侧为 `/dev/ttyGS0`，速率
+   115200；
+2. **USB 网络/SSH**：主机地址 `192.168.77.1/30`，设备地址
+   `192.168.77.2/30`，登录 `ssh root@192.168.77.2`；
+3. **UART 串口回退**：测试点 115200 8N1，root / `flounder`。
+
+本轮同时加入 BCM4354 的 `brcmfmac` SDIO 驱动、linux-firmware 和从运行时
+设备树提取的 NVRAM；具体验收命令见 `docs/access-and-networking.md`。
 
 登录后：
 
@@ -512,10 +536,10 @@ dmesg | less
 
 | 文件 | 大小 | 说明 |
 |---|---|---|
-| `boot.img` | 7.8 MB | 极小内核 + loop 挂载 initramfs，最终启动成功 |
+| `boot.img` | 8.3 MB | 极小内核 + loop 挂载 initramfs，最终启动成功 |
 | `rootfs.img` | 4 GiB | NixOS 26.11 aarch64 rootfs（loop0 fstab） |
-| `bootimg-rescue` | 7.8 MB | `init=/bin/sh` 救援镜像 |
+| `bootimg-rescue` | 8.3 MB | `init=/bin/sh` 救援镜像 |
 | `SHA256SUMS.txt` | – | 校验和 |
 
-`out/rootfs.img` 的 sha256：`9cd4366c…ff7a6`；`out/boot.img`：
-`6bfd05c3…57ebe`。
+`out/boot.img` 的 sha256：`80c20bfe…024a5`；`out/bootimg-rescue`：
+`729cc1bc…fb6a`；`out/rootfs.img`：`6340864c…ddc1`。

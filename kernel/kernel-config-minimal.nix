@@ -114,6 +114,13 @@ in
   CRYPTO = force yes;
   CRYPTO_CRC32C = force yes;
 
+  # NixOS compresses firmware with zstd for kernels >= 5.19.  Keep the
+  # decompressor in the monolithic kernel so brcmfmac can load firmware
+  # without relying on modules or an initrd helper.
+  FW_LOADER_COMPRESS = force yes;
+  FW_LOADER_COMPRESS_XZ = force no;
+  FW_LOADER_COMPRESS_ZSTD = force yes;
+
   MMC = force yes;
   RPMB = force yes;
   MMC_BLOCK = force yes;
@@ -167,12 +174,20 @@ in
   FRAMEBUFFER_CONSOLE = force yes;
   LOGO = force no;
 
-  # --- USB host (keyboard/storage) ----------------------------------------
+  # --- USB controller and gadget (single micro-USB port) ------------------
   USB_SUPPORT = force yes;
   USB = force yes;
   USB_XHCI_HCD = force yes;
   USB_XHCI_TEGRA = force yes;
   PHY_TEGRA_XUSB = force yes;
+  # Tegra132's legacy UTMI controller is supported by the mainline ChipIdea
+  # glue. CDC_COMPOSITE gives one ACM serial function and one ECM NIC.
+  USB_GADGET = force yes;
+  USB_CHIPIDEA = force yes;
+  USB_CHIPIDEA_UDC = force yes;
+  USB_CHIPIDEA_TEGRA = force yes;
+  USB_TEGRA_PHY = force yes;
+  USB_CDC_COMPOSITE = force yes;
   USB_HID = force yes;
   HID = force yes;
   HID_GENERIC = force yes;
@@ -215,10 +230,16 @@ in
   SND = force no;
   SOUND = force no;
   MEDIA_SUPPORT = force no;
-  WLAN = force no;
-  WIRELESS = force no;
-  CFG80211 = force no;
+  WLAN = force yes;
+  WIRELESS = force yes;
+  CFG80211 = force yes;
+  # RFKILL appears after cfg80211 in net/Kconfig.  Leaving it disabled
+  # keeps cfg80211 at y during the non-interactive config pass; flounder
+  # has no rfkill GPIO needed for the BCM4354 path.
+  RFKILL = force no;
   MAC80211 = force no;
+  BRCMFMAC = force yes;
+  BRCMFMAC_SDIO = force yes;
   BT = force no;
   NETFILTER = force no;
   NET_SCHED = force no;
@@ -279,10 +300,8 @@ in
   SUSPEND = force no;
   CPU_FREQ = force no;
   CPU_IDLE = force no;
-  USB_GADGET = force no;
   USB_DWC2 = force no;
   USB_DWC3 = force no;
-  USB_CHIPIDEA = force no;
   USB_MUSB_HCD = force no;
   USB_MUSB_DUAL_ROLE = force no;
   USB_EHCI_HCD = force no;

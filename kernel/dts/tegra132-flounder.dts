@@ -932,13 +932,14 @@
 	vqmmc-supply = <&vdd_1v8>;
 };
 
-/* WiFi SDIO (SDMMC1): Broadcom BCM4354.
- * Needs firmware (brcm/brcmfmac4354-sdio.bin + NVRAM) to be useful. */
+/* WiFi SDIO (SDMMC1): Broadcom BCM4354. */
 &{/mmc@700b0000} {
 	status = "okay";
 	#address-cells = <1>;
 	#size-cells = <0>;
 	bus-width = <4>;
+	sd-uhs-sdr104;
+	nvidia,only-1-8v;
 	non-removable;
 	keep-power-in-suspend;
 	cap-power-off-card;
@@ -948,22 +949,23 @@
 	wifi@1 {
 		compatible = "brcm,bcm4354-fmac", "brcm,bcm4329-fmac";
 		reg = <1>;
+		brcm,board-type = "htc,flounder";
+		local-mac-address = [b4 ce f6 07 07 27];
 		interrupt-parent = <&gpio>;
 		interrupts = <TEGRA_GPIO(U, 5) IRQ_TYPE_LEVEL_HIGH>;
 		interrupt-names = "host-wake";
 	};
 };
 
-/* XUSB: single micro-USB OTG port on lane usb2-0.
- * Device (gadget) mode is not supported by mainline xhci-tegra; the
- * downstream tegra-udc has no mainline counterpart. */
+/* The only micro-USB connector is used as a device-only link.  The
+ * downstream DT identifies the legacy UTMI controller at 0x7d000000 as the
+ * UDC; current mainline provides it through the ChipIdea Tegra glue. */
 &{/usb@70090000} {
-	status = "okay";
-	phys = <&{/padctl@7009f000/pads/usb2/lanes/usb2-0}>;
-	phy-names = "usb2-0";
+	status = "disabled";
 };
 
 &padctl {
+	status = "disabled";
 	avdd-pll-utmip-supply = <&vdd_1v8>;
 	avdd-pll-erefe-supply = <&avdd_pll>;
 	avdd-pex-pll-supply = <&avdd_pll>;
@@ -988,4 +990,16 @@
 			mode = "otg";
 		};
 	};
+};
+
+&{/usb@7d000000} {
+	compatible = "nvidia,tegra124-udc";
+	status = "okay";
+	dr_mode = "peripheral";
+	nvidia,phy = <&phy1>;
+};
+
+&phy1 {
+	status = "okay";
+	dr_mode = "peripheral";
 };
